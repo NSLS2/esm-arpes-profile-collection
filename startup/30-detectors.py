@@ -199,7 +199,7 @@ class SpectrumAnalyzer(Device):
     sync = Cpt(EpicsSignal, "SYS:SYNC")
 
     # Detector parameters
-    state = Cpt(EpicsSignalRO, "STATE")
+    state = Cpt(EpicsSignalRO, "STATE", string=True)
     endX = Cpt(EpicsSignal, "ENDX")
     startY = Cpt(EpicsSignal, "STARTY")
     num_slice = Cpt(EpicsSignal, "NUM_SLICE")
@@ -259,19 +259,21 @@ class SpectrumAnalyzer(Device):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.stage_sigs.update([
-            (self.acquire, 0),
-        ])
+        self.stage_sigs.update(
+            [
+                (self.acquire, 0),
+            ]
+        )
         self._status = None
 
     def stage(self):
         self.state.subscribe(self._stage_changed, run=False)
         return super().stage()
 
-    def _stage_changed(self, value, old_value, timestamp):
+    def _stage_changed(self, value=None, old_value=None, **kwargs):
         if self._status is None:
             return
-        if value == 83 and old_value == 82:
+        if value == "STANDBY" and old_value == "RUNNING":
             self._status.set_finished()
             self._status = None
 
@@ -289,6 +291,7 @@ class SpectrumAnalyzer(Device):
         super().unstage()
         self.state.unsubscribe(self._stage_changed)
 
+spectrum_analyzer = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="spectrum_analyzer")
 
 Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
 Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
