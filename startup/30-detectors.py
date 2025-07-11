@@ -291,7 +291,7 @@ class SpectrumAnalyzer(Device):
         super().unstage()
         self.state.unsubscribe(self._stage_changed)
 
-spectrum_analyzer = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="spectrum_analyzer")
+mbs = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="mbs")
 
 Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
 Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
