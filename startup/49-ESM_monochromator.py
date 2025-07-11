@@ -28,6 +28,7 @@ ESM_Grt_Translation = df.to_dict(orient='records')[0] #the[0] extract the dictio
 
 df = pd.read_csv(os.path.join(motion_definition_dir, 'Grt_Offset_A.csv'), dtype='str') #you wanted float datatype
 ESM_Grt_Offset_A = df.to_dict(orient='records')[0] #the[0] extract the dictionary
+#print(ESM_Grt_Offset_A)
 
 df = pd.read_csv(os.path.join(motion_definition_dir, 'Grt_Offset_B.csv'), dtype='str') #float datatype
 ESM_Grt_Offset_B = df.to_dict(orient='records')[0] #the[0] extract the dictionary
@@ -443,7 +444,8 @@ class ESM_monochromator_device:
         i = k.index(float(grating))
         b2 = -a1[i]/(2*k[i])
         X= photon_energy #energy range in eV
-        L = (1.24/X)*0.001  # wavelenght in mm
+#        L = (1.24/X)*0.001  # wavelenght in mm
+        L = (1.239842/X)*0.001  # wavelenght in mm
         A0 = (k[i]*L)
         A2 = A0*rb*b2
         if c==None:
@@ -455,6 +457,11 @@ class ESM_monochromator_device:
         alp = np.arcsin(-A0/(C**2-1) + np.sqrt(1+(C*A0)**2/(C**2-1)**2))   #in radians
         beta = np.arccos(C*np.cos(alp))   # in radians
         gamma = ( alp + beta )/2
+
+
+        #this below is the energy for this angles
+#        print( 1.239842*k[i]*0.001/((np.sin(beta)-np.sin(alp)) ) )        
+#        print( 1.239852*k[i]*0.001/( (np.sin(beta)-np.sin(alp)) ) )
 
         angles={'alpha' : alp*rad2dg , 'beta' : beta*rad2dg , 'gamma' : gamma*rad2dg, 'c' : C  }
         return angles
@@ -560,7 +567,7 @@ class ESM_monochromator_device:
                         round( abs(self.PGM_angles(photon_energy,grating,EPU=EPU)['beta']- PGM.Grating_Pitch.position)/2  ) ) )
         if n_steps == 0: n_steps = 1 # if the number of steps is 0 set it to 1
 
-        #print('n = ', n_steps)
+#        print('n = ', n_steps)
 
         # divide the range of motion of M2 and the grating into 'n_steps' even steps
 
@@ -578,12 +585,13 @@ class ESM_monochromator_device:
         else:
             M2_steps=np.linspace(PGM.Mirror_Pitch.position,
                              self.PGM_angles(photon_energy,grating,EPU=EPU,
-                                             c=c_val)['gamma'], num=n_steps)
+                                             c=c_val)['gamma'], num=n_steps, endpoint = True)
             GRT_steps=np.linspace(PGM.Grating_Pitch.position,
                               self.PGM_angles(photon_energy,grating,EPU=EPU,
-                                              c=c_val)['beta'], num=n_steps)
+                                              c=c_val)['beta'], num=n_steps, endpoint = True)
 
 
+#        print(M2_steps, GRT_steps)
         for i in range(n_steps):   # set position of M2 pitch and GRT pitch step by step.
             yield from mv(PGM.Mirror_Pitch, M2_steps[i],    PGM.Grating_Pitch, GRT_steps[i])
 
