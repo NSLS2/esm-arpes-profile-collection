@@ -1,6 +1,12 @@
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from bluesky.protocols import WritesStreamAssets, Readable
+from bluesky.utils import SyncOrAsyncIterator, StreamAsset
+from event_model import compose_stream_resource, DataKey
 from ophyd import Kind
 from ophyd.quadem import QuadEM  # , QuadEMPort  # TODO in the future once it's in ophyd
-
 from ophyd import (
     Device,
     EpicsSignalRO,
@@ -174,29 +180,40 @@ class MyDetector(SingleTrigger, AreaDetector):
                     getattr(stats, val).kind = 'hinted'
 
 
-class SpectrumAnalyzer(Device):
+def _convert_path_to_posix(path: Path) -> Path:
+    """Assumes that the path is on a Windows machine with Z: drive."""
+    # Convert to string to manipulate
+    path_str = str(path)
+    
+    # Replace Z: with the target directory
+    if path_str.startswith("Z:"):
+        path_str = path_str.replace("Z:", "/nsls2/data3/esm/legacy", 1)
+    else:
+        return path
+    
+    # Convert backslashes to forward slashes for POSIX compatibility
+    path_str = path_str.replace("\\", "/")
+    
+    return Path(path_str)
+
+
+class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
     # Acquisition control
     acquire = Cpt(EpicsSignal, "ACQUIRE")
     acquisition_status = Cpt(EpicsSignalRO, "ACQ:STATUS")
 
-    # Monitor control
-    monitor_on = Cpt(EpicsSignal, "MON:ON")
-    monitor_off = Cpt(EpicsSignal, "MON:OFF")
-    monitor_status = Cpt(EpicsSignalRO, "MON:STATUS")
-
-    # Detector control
-    detector_off = Cpt(EpicsSignal, "DET:OFF")
-    detector_status = Cpt(EpicsSignalRO, "DET:STATUS")
-
-    # Image acquisition
-    get_image = Cpt(EpicsSignal, "IMG:GET")
-    get_stats = Cpt(EpicsSignal, "ACQ:STATS")
-
     # Status and info
     connection_status = Cpt(EpicsSignalRO, "SYS:CONNECTED")
-    last_error = Cpt(EpicsSignalRO, "SYS:ERROR")
     last_sync = Cpt(EpicsSignalRO, "SYS:LAST_SYNC")
     sync = Cpt(EpicsSignal, "SYS:SYNC")
+
+    # File writing
+    file_capture = Cpt(EpicsSignal, "FILE:CAPTURE")
+    file_name = Cpt(EpicsSignal, "FILE:NAME")
+    file_path = Cpt(EpicsSignal, "FILE:PATH")
+    file_status = Cpt(EpicsSignalRO, "FILE:STATUS")
+    num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
+    num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
 
     # Detector parameters
     state = Cpt(EpicsSignalRO, "STATE", string=True)
@@ -262,11 +279,27 @@ class SpectrumAnalyzer(Device):
         self.stage_sigs.update(
             [
                 (self.acquire, 0),
+                (self.file_capture, 1),
             ]
         )
         self._status = None
+        self._index = 0
+        self._last_emitted_index = 0
+        self._composer = None
+        self._full_path = None
 
     def stage(self):
+        if self.file_capture.get(as_string=True) == "On":
+            raise RuntimeError(
+                "File capture must be off to stage the detector, otherwise the file will be corrupted"
+            )
+
+        path = _convert_path_to_posix(Path(self.file_path.get()))
+        file_name = Path(self.file_name.get())
+        self._full_path = str(path / file_name)
+        self._index = 0
+        self._last_emitted_index = 0
+
         self.state.subscribe(self._stage_changed, run=False)
         return super().stage()
 
@@ -275,6 +308,7 @@ class SpectrumAnalyzer(Device):
             return
         if value == "STANDBY" and old_value == "RUNNING":
             self._status.set_finished()
+            self._index += 1
             self._status = None
 
     def trigger(self):
@@ -287,9 +321,54 @@ class SpectrumAnalyzer(Device):
         self._status = Status()
         return self._status
 
+    def describe(self) -> dict[str, DataKey]:
+        describe = super().describe()
+        describe.update(
+            {
+                f"{self.name}_image": DataKey(
+                    source=f"{self._full_path}",
+                    shape=(1, 1080, self.num_steps.get()),
+                    dtype="array",
+                    dtype_numpy=np.dtype(np.uint32).str,
+                    external="STREAM:",
+                ),
+            }
+        )
+        return describe
+
+    def get_index(self) -> int:
+        return self._index
+
+    def collect_asset_docs(
+        self, index: Optional[int] = None
+    ) -> SyncOrAsyncIterator[StreamAsset]:
+        if index is not None:
+            msg = f"Indexing is not supported for this detector, got: {index}, current index: {self.get_index()}"
+            raise NotImplementedError(msg)
+
+        index = self.get_index()
+        if index:
+            if not self._composer:
+                self._composer = compose_stream_resource(
+                    data_key=f"{self.name}_image",
+                    mimetype="application/x-hdf5",
+                    uri=f"file://{self._full_path}",
+                    parameters={"dataset": "entry1/analyzer/data"},
+                )
+                yield "stream_resource", self._composer.stream_resource_doc
+
+            if index >= self._last_emitted_index:
+                indices = {
+                    "start": self._last_emitted_index,
+                    "stop": index,
+                }
+                self._last_emitted_index = index
+                yield "stream_datum", self._composer.compose_stream_datum(indices)
+
     def unstage(self):
         super().unstage()
         self.state.unsubscribe(self._stage_changed)
+        self._composer = None
 
 mbs = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="mbs")
 
