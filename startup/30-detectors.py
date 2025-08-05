@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Optional
+import time as ttime
 
 import numpy as np
 from bluesky.protocols import WritesStreamAssets, Readable
@@ -276,12 +277,6 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.stage_sigs.update(
-            [
-                (self.acquire, 0),
-                (self.file_capture, 1),
-            ]
-        )
         self._status = None
         self._index = 0
         self._last_emitted_index = 0
@@ -293,6 +288,10 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             raise RuntimeError(
                 "File capture must be off to stage the detector, otherwise the file will be corrupted"
             )
+
+        if self.acquire.get(as_string=True) == "RUNNING":
+            self.stage_sigs.update([(self.acquire, 0)])
+        self.stage_sigs.update([(self.file_capture, 1)])
 
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
@@ -307,6 +306,7 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         if self._status is None:
             return
         if value == "STANDBY" and old_value == "RUNNING":
+            ttime.sleep(1.0)
             self._status.set_finished()
             self._index += 1
             self._status = None
