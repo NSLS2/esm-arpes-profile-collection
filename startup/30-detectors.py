@@ -203,6 +203,12 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
     acquire = Cpt(EpicsSignal, "ACQUIRE")
     acquisition_status = Cpt(EpicsSignalRO, "ACQ:STATUS")
 
+    # Detector control
+    det_off = Cpt(EpicsSignal, "DET:OFF")
+    det_max_count = Cpt(EpicsSignalRO, "DET:MAX_COUNT")
+    det_max_count_threshold = Cpt(EpicsSignal, "DET:MAX_COUNT_THRESH")
+    det_max_count_exceeded = Cpt(EpicsSignal, "DET:MAX_COUNT_EXCEEDED")
+
     # Status and info
     connection_status = Cpt(EpicsSignalRO, "SYS:CONNECTED")
     last_sync = Cpt(EpicsSignalRO, "SYS:LAST_SYNC")
@@ -210,8 +216,8 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
 
     # File writing
     file_capture = Cpt(EpicsSignal, "FILE:CAPTURE")
-    file_name = Cpt(EpicsSignal, "FILE:NAME")
-    file_path = Cpt(EpicsSignal, "FILE:PATH")
+    file_name = Cpt(EpicsSignal, "FILE:NAME", string=True)
+    file_path = Cpt(EpicsSignal, "FILE:PATH", string=True)
     file_status = Cpt(EpicsSignalRO, "FILE:STATUS")
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
@@ -288,10 +294,13 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             raise RuntimeError(
                 "File capture must be off to stage the detector, otherwise the file will be corrupted"
             )
-
-        if self.acquire.get(as_string=True) == "RUNNING":
-            self.stage_sigs.update([(self.acquire, 0)])
-        self.stage_sigs.update([(self.file_capture, 1)])
+        if self.state.get(as_string=True) == "RUNNING":
+            self.acquire.set(0).wait(3.0)
+        self.stage_sigs.update(
+            [
+                (self.file_capture, 1),
+            ]
+        )
 
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
@@ -306,9 +315,19 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         if self._status is None:
             return
         if value == "STANDBY" and old_value == "RUNNING":
+            # Settle time for the detector to transition properly
             ttime.sleep(1.0)
-            self._status.set_finished()
-            self._index += 1
+            if self.det_max_count_exceeded.get():
+                max_count = self.det_max_count.get()
+                max_count_threshold = self.det_max_count_threshold.get()
+                self._status.set_exception(
+                    RuntimeError(
+                        f"Max count safety limit exceeded: {max_count} > {max_count_threshold}"
+                    )
+                )
+            else:
+                self._status.set_finished()
+                self._index += 1
             self._status = None
 
     def trigger(self):
@@ -317,8 +336,9 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
                 "This detector is not ready to trigger."
                 "Call the stage() method before triggering."
             )
-        self.acquire.set(1)
+
         self._status = Status()
+        self.acquire.set(1).wait(1.0)
         return self._status
 
     def describe(self) -> dict[str, DataKey]:
@@ -366,9 +386,13 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
                 yield "stream_datum", self._composer.compose_stream_datum(indices)
 
     def unstage(self):
+        if self.state.get(as_string=True) == "RUNNING":
+            self.acquire.set(0).wait(3.0)
+        self.det_off.set(1).wait(3.0)
         super().unstage()
         self.state.unsubscribe(self._stage_changed)
         self._composer = None
+
 
 mbs = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="mbs")
 
