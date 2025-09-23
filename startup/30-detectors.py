@@ -298,13 +298,23 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             raise RuntimeError(
                 "File capture must be off to stage the detector, otherwise the file will be corrupted"
             )
+
+        # Must be in standby to start
         if self.state.get(as_string=True) == "RUNNING":
             self.acquire.set(0).wait(3.0)
+
+        # Must be live monitoring to start
+        if self.live_monitoring.get(as_string=True) == "Off":
+            self.live_monitoring.set("On").wait(3.0)
+
+        # File capture must be on and then turned off at unstage
         self.stage_sigs.update(
             [
                 (self.file_capture, 1),
             ]
         )
+
+        # Frame rate can't be faster than 200ms in any mode except swept
         if self.frames.get() < 200 and self.acq_mode.get(as_string=True) != "Swept":
             self.stage_sigs.update(
                 [(self.frames, 200)],
@@ -316,6 +326,8 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         self._index = 0
         self._last_emitted_index = 0
 
+        # Subscribe to state and live max count exceeded to
+        # handle the acquisition status
         self.state.subscribe(self._state_changed, run=False)
         self.live_max_count_exceeded.subscribe(
             self._live_max_count_exceeded_monitor, run=False
