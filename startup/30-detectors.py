@@ -335,7 +335,7 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         return super().stage()
 
     def _state_changed(self, value=None, old_value=None, **kwargs):
-        if self._status is not None and value == "STANDBY" and old_value == "RUNNING":
+        if self._status is not None and value == "STANDBY" and (old_value == "RUNNING" or old_value == "MOVING"):
             self._status.set_finished()
             self._index += 1
             self._status = None
