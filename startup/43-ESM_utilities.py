@@ -225,6 +225,8 @@ def format_channel_name(DET,Channel,Value='total', dot = False):
                     Value+='_value'
                 channel_name=DET+sep+'stats'+str(Channel)+sep+Value
 
+#        elif 'mbs' in DET.lower():
+#	        channel_name='mbs'
         else:
             #If the detcor type has not been determined.
             raise ValueError("Detector type not recognised, name must contain 'qem' or 'cam'.")
