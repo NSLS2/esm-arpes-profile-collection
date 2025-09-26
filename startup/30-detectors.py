@@ -205,9 +205,14 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
 
     # Detector control
     det_off = Cpt(EpicsSignal, "DET:OFF")
-    det_max_count = Cpt(EpicsSignalRO, "DET:MAX_COUNT")
-    det_max_count_threshold = Cpt(EpicsSignal, "DET:MAX_COUNT_THRESH")
-    det_max_count_exceeded = Cpt(EpicsSignal, "DET:MAX_COUNT_EXCEEDED")
+
+    # Live data monitoring
+    live_monitoring = Cpt(EpicsSignal, "LIVE:MONITORING")
+    live_max_count = Cpt(EpicsSignalRO, "LIVE:MAX_COUNT")
+    live_update_rate = Cpt(EpicsSignal, "LIVE:UPDATE_RATE")
+    live_last_update = Cpt(EpicsSignalRO, "LIVE:LAST_UPDATE")
+    live_max_count_threshold = Cpt(EpicsSignal, "LIVE:MAX_COUNT_THRESH")
+    live_max_count_exceeded = Cpt(EpicsSignal, "LIVE:MAX_COUNT_EXCEEDED")
 
     # Status and info
     connection_status = Cpt(EpicsSignalRO, "SYS:CONNECTED")
@@ -218,7 +223,6 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
     file_capture = Cpt(EpicsSignal, "FILE:CAPTURE")
     file_name = Cpt(EpicsSignal, "FILE:NAME", string=True)
     file_path = Cpt(EpicsSignal, "FILE:PATH", string=True)
-    file_status = Cpt(EpicsSignalRO, "FILE:STATUS")
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
 
@@ -294,13 +298,27 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             raise RuntimeError(
                 "File capture must be off to stage the detector, otherwise the file will be corrupted"
             )
+
+        # Must be in standby to start
         if self.state.get(as_string=True) == "RUNNING":
             self.acquire.set(0).wait(3.0)
+
+        # Must be live monitoring to start
+        if self.live_monitoring.get(as_string=True) == "Off":
+            self.live_monitoring.set("On").wait(3.0)
+
+        # File capture must be on and then turned off at unstage
         self.stage_sigs.update(
             [
                 (self.file_capture, 1),
             ]
         )
+
+        # Frame rate can't be faster than 200ms in any mode except swept
+        if self.frames.get() < 200 and self.acq_mode.get(as_string=True) != "Swept":
+            self.stage_sigs.update(
+                [(self.frames, 200)],
+            )
 
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
@@ -308,26 +326,27 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         self._index = 0
         self._last_emitted_index = 0
 
-        self.state.subscribe(self._stage_changed, run=False)
+        # Subscribe to state and live max count exceeded to
+        # handle the acquisition status
+        self.state.subscribe(self._state_changed, run=False)
+        self.live_max_count_exceeded.subscribe(
+            self._live_max_count_exceeded_monitor, run=False
+        )
         return super().stage()
 
-    def _stage_changed(self, value=None, old_value=None, **kwargs):
-        if self._status is None:
-            return
-        if value == "STANDBY" and old_value == "RUNNING":
-            # Settle time for the detector to transition properly
-            ttime.sleep(1.0)
-            if self.det_max_count_exceeded.get():
-                max_count = self.det_max_count.get()
-                max_count_threshold = self.det_max_count_threshold.get()
-                self._status.set_exception(
-                    RuntimeError(
-                        f"Max count safety limit exceeded: {max_count} > {max_count_threshold}"
-                    )
+    def _state_changed(self, value=None, old_value=None, **kwargs):
+        if self._status is not None and value == "STANDBY" and (old_value == "RUNNING" or old_value == "MOVING"):
+            self._status.set_finished()
+            self._index += 1
+            self._status = None
+
+    def _live_max_count_exceeded_monitor(self, value=None, **kwargs):
+        if self._status is not None and value:
+            self._status.set_exception(
+                RuntimeError(
+                    f"Max count safety limit exceeded: {self.live_max_count.get()} > {self.live_max_count_threshold.get()}"
                 )
-            else:
-                self._status.set_finished()
-                self._index += 1
+            )
             self._status = None
 
     def trigger(self):
@@ -338,7 +357,7 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             )
 
         self._status = Status()
-        self.acquire.set(1).wait(1.0)
+        self.acquire.put(1)
         return self._status
 
     def describe(self) -> dict[str, DataKey]:
@@ -390,7 +409,8 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
             self.acquire.set(0).wait(3.0)
         self.det_off.set(1).wait(3.0)
         super().unstage()
-        self.state.unsubscribe(self._stage_changed)
+        self.state.unsubscribe(self._state_changed)
+        self.live_max_count_exceeded.unsubscribe(self._live_max_count_exceeded_monitor)
         self._composer = None
 
 
