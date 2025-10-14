@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 import time as ttime
-from itertools import count
+from itertools import count as ccount
 
 import numpy as np
 from bluesky.protocols import Readable, WritesExternalAssets
@@ -412,7 +412,7 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
         self._datum_uids = []
         ret = super().stage()
         self._generate_resource()
-        self._point_counter = count()
+        self._point_counter = ccount()
         return ret
 
     def trigger(self):
