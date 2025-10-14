@@ -1,11 +1,12 @@
 from pathlib import Path
 from typing import Optional
 import time as ttime
+from itertools import count as ccount
 
 import numpy as np
-from bluesky.protocols import WritesStreamAssets, Readable
-from bluesky.utils import SyncOrAsyncIterator, StreamAsset
-from event_model import compose_stream_resource, DataKey
+from bluesky.protocols import Readable, WritesExternalAssets
+from bluesky.utils import SyncOrAsyncIterator, Asset
+from event_model import DataKey, compose_resource
 from ophyd import Kind
 from ophyd.quadem import QuadEM  # , QuadEMPort  # TODO in the future once it's in ophyd
 from ophyd import (
@@ -197,8 +198,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     
     return Path(path_str)
 
-
-class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
+class SpectrumAnalyzer(Device, Readable):
     # Acquisition control
     acquire = Cpt(EpicsSignal, "ACQUIRE")
     acquisition_status = Cpt(EpicsSignalRO, "ACQ:STATUS")
@@ -209,10 +209,10 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
     # Live data monitoring
     live_monitoring = Cpt(EpicsSignal, "LIVE:MONITORING")
     live_max_count = Cpt(EpicsSignalRO, "LIVE:MAX_COUNT")
-    live_update_rate = Cpt(EpicsSignal, "LIVE:UPDATE_RATE")
     live_last_update = Cpt(EpicsSignalRO, "LIVE:LAST_UPDATE")
     live_max_count_threshold = Cpt(EpicsSignal, "LIVE:MAX_COUNT_THRESH")
     live_max_count_exceeded = Cpt(EpicsSignal, "LIVE:MAX_COUNT_EXCEEDED")
+    live_max_count_avg_n = Cpt(EpicsSignal, "LIVE:MAX_COUNT_AVG_N")
 
     # Status and info
     connection_status = Cpt(EpicsSignalRO, "SYS:CONNECTED")
@@ -285,6 +285,9 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
     over_range = Cpt(EpicsSignal, "OVER_RANGE")
 
+    _min_frames = 100
+    """TCP server can't keep up with frame rate faster than this value in non-swept mode"""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._status = None
@@ -315,9 +318,12 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         )
 
         # Frame rate can't be faster than 200ms in any mode except swept
-        if self.frames.get() < 200 and self.acq_mode.get(as_string=True) != "Swept":
+        if (
+            self.frames.get() < self._min_frames
+            and self.acq_mode.get(as_string=True) != "Swept"
+        ):
             self.stage_sigs.update(
-                [(self.frames, 200)],
+                [(self.frames, self._min_frames)],
             )
 
         path = _convert_path_to_posix(Path(self.file_path.get()))
@@ -335,7 +341,11 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         return super().stage()
 
     def _state_changed(self, value=None, old_value=None, **kwargs):
-        if self._status is not None and value == "STANDBY" and (old_value == "RUNNING" or old_value == "MOVING"):
+        if (
+            self._status is not None
+            and value == "STANDBY"
+            and (old_value == "RUNNING" or old_value == "MOVING")
+        ):
             self._status.set_finished()
             self._index += 1
             self._status = None
@@ -360,50 +370,6 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         self.acquire.put(1)
         return self._status
 
-    def describe(self) -> dict[str, DataKey]:
-        describe = super().describe()
-        describe.update(
-            {
-                f"{self.name}_image": DataKey(
-                    source=f"{self._full_path}",
-                    shape=(1, 1080, self.num_steps.get()),
-                    dtype="array",
-                    dtype_numpy=np.dtype(np.uint32).str,
-                    external="STREAM:",
-                ),
-            }
-        )
-        return describe
-
-    def get_index(self) -> int:
-        return self._index
-
-    def collect_asset_docs(
-        self, index: Optional[int] = None
-    ) -> SyncOrAsyncIterator[StreamAsset]:
-        if index is not None:
-            msg = f"Indexing is not supported for this detector, got: {index}, current index: {self.get_index()}"
-            raise NotImplementedError(msg)
-
-        index = self.get_index()
-        if index:
-            if not self._composer:
-                self._composer = compose_stream_resource(
-                    data_key=f"{self.name}_image",
-                    mimetype="application/x-hdf5",
-                    uri=f"file://{self._full_path}",
-                    parameters={"dataset": "entry1/analyzer/data"},
-                )
-                yield "stream_resource", self._composer.stream_resource_doc
-
-            if index >= self._last_emitted_index:
-                indices = {
-                    "start": self._last_emitted_index,
-                    "stop": index,
-                }
-                self._last_emitted_index = index
-                yield "stream_datum", self._composer.compose_stream_datum(indices)
-
     def unstage(self):
         if self.state.get(as_string=True) == "RUNNING":
             self.acquire.set(0).wait(3.0)
@@ -413,8 +379,79 @@ class SpectrumAnalyzer(Device, WritesStreamAssets, Readable):
         self.live_max_count_exceeded.unsubscribe(self._live_max_count_exceeded_monitor)
         self._composer = None
 
+    @property
+    def index(self) -> int:
+        return self._index
 
-mbs = SpectrumAnalyzer("XF:21ID1-ES{A1Soft}", name="mbs")
+
+class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._datum_uids = []
+        self._asset_docs_cache = []
+        self._point_counter = None
+
+    def _generate_resource(self):
+        self._composer = compose_resource(
+            spec="A1_HDF5",
+            root=str(Path(self._full_path).parent),
+            resource_path=self._full_path,
+            resource_kwargs={"frame_per_point": 1},
+            path_semantics="posix",
+        )
+        self._asset_docs_cache.append(("resource", self._composer.resource_doc))
+
+    def generate_datum(self):
+        timestamp = time.time()
+        i = next(self._point_counter)
+        datum = self._composer.compose_datum({"point_number": i})
+        self._datum_uids.append({"value": datum["datum_id"], "timestamp": timestamp})
+        self._asset_docs_cache.append(("datum", datum))
+
+    def stage(self):
+        self._datum_uids = []
+        ret = super().stage()
+        self._generate_resource()
+        self._point_counter = ccount()
+        return ret
+
+    def trigger(self):
+        s = super().trigger()
+        self.generate_datum()
+        return s
+
+    def unstage(self):
+        self._point_counter = None
+        return super().unstage()
+
+    def describe(self) -> dict[str, DataKey]:
+        describe = super().describe()
+        describe.update(
+            {
+                f"{self.name}_image": DataKey(
+                    source=f"{self._full_path}",
+                    shape=(1, self.num_slice.get(), self.num_steps.get()),
+                    dtype="array",
+                    dtype_numpy=np.dtype(np.uint32).str,
+                    external="FILESTORE:",
+                ),
+            }
+        )
+        return describe
+
+    def read(self):
+        res = super().read()
+        res[f"{self.name}_image"] = self._datum_uids[-1]
+        return res
+
+    def collect_asset_docs(self) -> SyncOrAsyncIterator[Asset]:
+        items = list(self._asset_docs_cache)
+        self._asset_docs_cache = []
+        for item in items:
+            yield item
+
+
+mbs = SpectrumAnalyzerFileStore("XF:21ID1-ES{A1Soft}", name="mbs")
 
 Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
 Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
