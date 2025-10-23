@@ -17,6 +17,10 @@ class LEEMDetector(Device):
         # On a background thread, listen for the server's response.
 #        self.st = None
 
+    def stage(self):
+        self.filepath.set(f"/nsls2/data3/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{self.name}/")
+        return super().stage()
+
     def trigger(self):
         init = 0
         status = DeviceStatus(self)

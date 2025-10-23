@@ -152,8 +152,8 @@ class MyDetector(SingleTrigger, AreaDetector):
     hdf5 = Cpt(
         HDF5PluginWithFileStore,
         suffix="HDF1:",
-        write_path_template="/nsls2/data/esm/legacy/image_files/",  # trailing slash!
-        root="/nsls2/data/esm/legacy/",
+        write_path_template=f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/default/",  # trailing slash!
+        root=f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/default/",
     )
 
     def set_primary(self, n, value=None):
@@ -461,67 +461,67 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
 mbs = SpectrumAnalyzerFileStore("XF:21ID1-ES{A1Soft}", name="mbs")
 
 Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
-Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
+Diag1_CamH.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Diag1_CamH.name}/"
 
 #Diag1_CamV = MyDetector("XF:21IDA-BI{Diag:1-Cam:V}", name="Diag1_CamV")
-#Diag1_CamV.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam02/"
+#Diag1_CamV.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Diag1_CamV.name}/"
 
 Lock23A_CamEA3_1 = MyDetector('XF:21IDD-BI{ES-Cam:3}', name='Lock23A_CamEA3_1')
-Lock23A_CamEA3_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam03/'
+Lock23A_CamEA3_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Lock23A_CamEA3_1.name}/"
 
 #Lock23A_CamEA3_1 = MyDetector(
 #    "XF:21IDD-BI{Lock2:3A-Cam:EA3_1}", name="Lock23A_CamEA3_1"
 #)
-#Lock23A_CamEA3_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam03/"
+#Lock23A_CamEA3_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Lock23A_CamEA3_1.name}/"
 
 
 #Lock14A_CamEA4_1 = MyDetector(
 #    "XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", name="Lock14A_CamEA4_1"
 #)
-#Lock14A_CamEA4_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam04/"
+#Lock14A_CamEA4_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Lock14A_CamEA4_1.name}/"
 
 #Prep2A_CamEA2_1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", name="Prep2A_CamEA2_1")
-#Prep2A_CamEA2_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam05/"
+#Prep2A_CamEA2_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Prep2A_CamEA2_1.name}/"
 
 Mir3_Cam10_U_1 = MyDetector("XF:21IDB-BI{Mir:3-Cam:6}", name="Mir3_Cam10_U_1")
-Mir3_Cam10_U_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam06/"
+Mir3_Cam10_U_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Mir3_Cam10_U_1.name}/"
 
 
 # BC1_Diag1_U_1 = MyDetector('XF:21IDA-BI{BC:1-Diag:1_U_1}', name='BC1_Diag1_U_1')
-# BC1_Diag1_U_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam07/'
+# BC1_Diag1_U_1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{BC1_Diag1_U_1.name}/"
 
 #Anal1A_Camlens = MyDetector("XF:21IDD-BI{Anal:1A-Cam:lens}", name="Anal1A_Camlens")
-#Anal1A_Camlens.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam07/"
+#Anal1A_Camlens.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Anal1A_Camlens.name}/"
 
 #Anal1A_Cambeam = MyDetector("XF:21IDD-BI{Anal:1A-Cam:beam}", name="Anal1A_Cambeam")
-#Anal1A_Cambeam.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam08/"
+#Anal1A_Cambeam.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Anal1A_Cambeam.name}/"
 
 Prep2A_CamLEED = MyDetector("XF:21IDD-BI{ES-Cam:9}", name="Prep2A_CamLEED")
-Prep2A_CamLEED.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam09/"
+Prep2A_CamLEED.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Prep2A_CamLEED.name}/"
 
 #Prep2A_Camevap1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap1}", name="Prep2A_Camevap1")
-#Prep2A_Camevap1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam10/"
+#Prep2A_Camevap1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Prep2A_Camevap1.name}/"
 
 #Prep2A_Camevap2 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap2}", name="Prep2A_Camevap2")
-#Prep2A_Camevap2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam11/"
+#Prep2A_Camevap2.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{Prep2A_Camevap2.name}/"
 
 LOWT_5A_Cam1 = MyDetector("XF:21IDD-OP{ES-Cam:16}", name="LOWT_5A_Cam1")
-LOWT_5A_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam14/"
+LOWT_5A_Cam1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{LOWT_5A_Cam1.name}/"
 
 #LOWT_5A_Cam2 = MyDetector("XF:21IDD-OP{LOWT:5A-Cam:2}", name="LOWT_5A_Cam2")
-#LOWT_5A_Cam2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam15/"
+#LOWT_5A_Cam2.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{LOWT_5A_Cam2.name}/"
 
 #BTA2_Cam1 = MyDetector("XF:21IDD-OP{BT:A2-Cam:1}", name="BTA2_Cam1")
-#BTA2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam16/"
+#BTA2_Cam1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{BTA2_Cam1.name}/"
 
 #BTB2_Cam1 = MyDetector("XF:21IDD-OP{BT:B2-Cam:1}", name="B2BT_Cam1")
-#BTB2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam17/"
+#BTB2_Cam1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{BTB2_Cam1.name}/"
 
 #PEEM1B_Cam1 = MyDetector("XF:21IDD-OP{PEEM:1B-Cam:1}", name="PEEM1B_Cam1")
-#PEEM1B_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam18/"
+#PEEM1B_Cam1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{PEEM1B_Cam1.name}/"
 
 #BTB5_Cam1 = MyDetector("XF:21IDD-OP{BT:B5-Cam:1}", name="BTB5_Cam1")
-#BTB5_Cam1.hdf5.write_path_template = "/nsls2/xf21id/image_files/cam19/"
+#BTB5_Cam1.hdf5.write_path_template = f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{BTB5_Cam1.name}/"
 
 all_standard_pros = [
     Diag1_CamH,
