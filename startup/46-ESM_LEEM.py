@@ -18,7 +18,7 @@ class LEEMDetector(Device):
 #        self.st = None
 
     def stage(self):
-        self.filepath.set(f"{proposal_path()}/assets/{self.name}/")
+        self.filepath.set(f"{proposal_path()}/assets/leem/")
         return super().stage()
 
     def trigger(self):
