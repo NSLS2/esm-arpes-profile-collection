@@ -189,7 +189,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     
     # Replace Z: with the target directory
     if path_str.startswith("Z:"):
-        path_str = path_str.replace("Z:", "/nsls2/data3/esm/legacy", 1)
+        path_str = path_str.replace("Z:", "/nsls2/data3/esm/proposals", 1)
     else:
         return path
     
@@ -326,6 +326,13 @@ class SpectrumAnalyzer(Device, Readable):
                 [(self.frames, self._min_frames)],
             )
 
+        # Rebase the path to the assets directory of the current cycle & data session
+        path_extension = self.file_path.get(as_string=True)
+        full_path = f"Z:\\{RE.md["cycle"]}\\{RE.md["data_session"]}\\assets\\{self.name}\\{path_extension}"
+        if path_extension.startswith("\\"):
+            raise ValueError("File path must be an extension to the assets directory, not a full path. "
+                f"This is for data security reasons. Full path would be '{full_path}', which is not allowed.")
+        self.file_path.set(full_path)
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
         self._full_path = str(path / file_name)
