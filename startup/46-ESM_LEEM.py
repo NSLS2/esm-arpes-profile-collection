@@ -18,7 +18,7 @@ class LEEMDetector(Device):
 #        self.st = None
 
     def stage(self):
-        self.filepath.set(f"/nsls2/data3/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}/assets/{self.name}/")
+        self.filepath.set(f"{proposal_path()}/assets/{self.name}/")
         return super().stage()
 
     def trigger(self):

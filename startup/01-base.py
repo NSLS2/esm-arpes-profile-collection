@@ -16,3 +16,6 @@ nslsii.configure_base(get_ipython().user_ns,
 
 # Set ipython startup dir variable (used in some modules):
 PROFILE_STARTUP_PATH = os.path.abspath(get_ipython().profile_dir.startup_dir)
+
+def proposal_path():
+    return f"/nsls2/data/esm/proposals/{RE.md["cycle"]}/{RE.md["data_session"]}"
