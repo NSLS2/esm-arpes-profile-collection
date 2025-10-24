@@ -150,13 +150,26 @@ class MyDetector(SingleTrigger, AreaDetector):
     roi4 = Cpt(ROIPlugin, "ROI4:")
     proc1 = Cpt(ProcessPlugin, "Proc1:")
 
-    # Added in factory function
-    # hdf5 = Cpt(
-    #     HDF5PluginWithFileStore,
-    #     suffix="HDF1:",
-    #     write_path_template=f"{proposal_path()}/assets/default/",  # trailing slash!
-    #     root=f"{proposal_path()}/assets/default/",
-    # )
+    # Overwritten in factory function
+    hdf5 = Cpt(
+        HDF5PluginWithFileStore,
+        suffix="HDF1:",
+        write_path_template=f"{proposal_path_template()}/assets/default/",  # trailing slash!
+        root="/nsls2/data/esm/proposals",
+    )
+
+    def stage(self):
+        self.hdf5.write_path_template = self.hdf5.write_path_template.format(
+            cycle=RE.md["cycle"],
+            data_session=RE.md["data_session"]
+        )
+        # FIXME: private member access
+        if self.hdf5._read_path_template is not None:
+            self.hdf5.read_path_template = self.hdf5.read_path_template.format(
+                cycle=RE.md["cycle"],
+                data_session=RE.md["data_session"]
+            )
+        return super().stage()
 
     def set_primary(self, n, value=None):
         if "All" in n:
@@ -189,8 +202,8 @@ def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwa
         hdf5 = Cpt(
             HDF5PluginWithFileStore,
             suffix="HDF1:",
-            write_path_template=f"{proposal_path()}/assets/{write_path_suffix}/{template_suffix}",
-            root=f"{proposal_path()}/assets/{write_path_suffix}/",
+            write_path_template=f"{proposal_path_template()}/assets/{write_path_suffix}/{template_suffix}",
+            root="/nsls2/data/esm/proposals",
         )
     return MyDetectorSubclass(prefix, **kwargs)
 
