@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 import time as ttime
 from itertools import count as ccount
+from datetime import datetime
 
 import numpy as np
 from bluesky.protocols import Readable, WritesExternalAssets
@@ -149,12 +150,26 @@ class MyDetector(SingleTrigger, AreaDetector):
     roi4 = Cpt(ROIPlugin, "ROI4:")
     proc1 = Cpt(ProcessPlugin, "Proc1:")
 
+    # Overwritten in factory function
     hdf5 = Cpt(
         HDF5PluginWithFileStore,
         suffix="HDF1:",
-        write_path_template="/nsls2/data/esm/legacy/image_files/",  # trailing slash!
-        root="/nsls2/data/esm/legacy/",
+        write_path_template=f"{proposal_path_template()}/assets/default/",  # trailing slash!
+        root="/nsls2/data/esm/proposals",
     )
+
+    def stage(self):
+        self.hdf5.write_path_template = self.hdf5.write_path_template.format(
+            cycle=RE.md["cycle"],
+            data_session=RE.md["data_session"]
+        )
+        # FIXME: private member access
+        if self.hdf5._read_path_template is not None:
+            self.hdf5.read_path_template = self.hdf5.read_path_template.format(
+                cycle=RE.md["cycle"],
+                data_session=RE.md["data_session"]
+            )
+        return super().stage()
 
     def set_primary(self, n, value=None):
         if "All" in n:
@@ -182,6 +197,17 @@ class MyDetector(SingleTrigger, AreaDetector):
                     getattr(stats, val).kind = 'hinted'
 
 
+def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwargs):
+    class MyDetectorSubclass(MyDetector):
+        hdf5 = Cpt(
+            HDF5PluginWithFileStore,
+            suffix="HDF1:",
+            write_path_template=f"{proposal_path_template()}/assets/{write_path_suffix}/{template_suffix}",
+            root="/nsls2/data/esm/proposals",
+        )
+    return MyDetectorSubclass(prefix, **kwargs)
+
+
 def _convert_path_to_posix(path: Path) -> Path:
     """Assumes that the path is on a Windows machine with Z: drive."""
     # Convert to string to manipulate
@@ -189,7 +215,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     
     # Replace Z: with the target directory
     if path_str.startswith("Z:"):
-        path_str = path_str.replace("Z:", "/nsls2/data3/esm/legacy", 1)
+        path_str = path_str.replace("Z:", "/nsls2/data3/esm/proposals", 1)
     else:
         return path
     
@@ -197,6 +223,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     path_str = path_str.replace("\\", "/")
     
     return Path(path_str)
+
 
 class SpectrumAnalyzer(Device, Readable):
     # Acquisition control
@@ -326,6 +353,9 @@ class SpectrumAnalyzer(Device, Readable):
                 [(self.frames, self._min_frames)],
             )
 
+        # Rebase the path to the assets directory of the current cycle & data session
+        full_path = f"Z:\\{RE.md["cycle"]}\\{RE.md["data_session"]}\\assets\\mbs\\{datetime.now().strftime("%Y\\%m\\%d")}"
+        self.file_path.set(full_path)
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
         self._full_path = str(path / file_name)
@@ -453,68 +483,24 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
 
 mbs = SpectrumAnalyzerFileStore("XF:21ID1-ES{A1Soft}", name="mbs")
 
-Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
-Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
-
-#Diag1_CamV = MyDetector("XF:21IDA-BI{Diag:1-Cam:V}", name="Diag1_CamV")
-#Diag1_CamV.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam02/"
-
-Lock23A_CamEA3_1 = MyDetector('XF:21IDD-BI{ES-Cam:3}', name='Lock23A_CamEA3_1')
-Lock23A_CamEA3_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam03/'
-
-#Lock23A_CamEA3_1 = MyDetector(
-#    "XF:21IDD-BI{Lock2:3A-Cam:EA3_1}", name="Lock23A_CamEA3_1"
-#)
-#Lock23A_CamEA3_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam03/"
-
-
-#Lock14A_CamEA4_1 = MyDetector(
-#    "XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", name="Lock14A_CamEA4_1"
-#)
-#Lock14A_CamEA4_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam04/"
-
-#Prep2A_CamEA2_1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", name="Prep2A_CamEA2_1")
-#Prep2A_CamEA2_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam05/"
-
-Mir3_Cam10_U_1 = MyDetector("XF:21IDB-BI{Mir:3-Cam:6}", name="Mir3_Cam10_U_1")
-Mir3_Cam10_U_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam06/"
-
-
-# BC1_Diag1_U_1 = MyDetector('XF:21IDA-BI{BC:1-Diag:1_U_1}', name='BC1_Diag1_U_1')
-# BC1_Diag1_U_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam07/'
-
-#Anal1A_Camlens = MyDetector("XF:21IDD-BI{Anal:1A-Cam:lens}", name="Anal1A_Camlens")
-#Anal1A_Camlens.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam07/"
-
-#Anal1A_Cambeam = MyDetector("XF:21IDD-BI{Anal:1A-Cam:beam}", name="Anal1A_Cambeam")
-#Anal1A_Cambeam.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam08/"
-
-Prep2A_CamLEED = MyDetector("XF:21IDD-BI{ES-Cam:9}", name="Prep2A_CamLEED")
-Prep2A_CamLEED.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam09/"
-
-#Prep2A_Camevap1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap1}", name="Prep2A_Camevap1")
-#Prep2A_Camevap1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam10/"
-
-#Prep2A_Camevap2 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap2}", name="Prep2A_Camevap2")
-#Prep2A_Camevap2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam11/"
-
-LOWT_5A_Cam1 = MyDetector("XF:21IDD-OP{ES-Cam:16}", name="LOWT_5A_Cam1")
-LOWT_5A_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam14/"
-
-#LOWT_5A_Cam2 = MyDetector("XF:21IDD-OP{LOWT:5A-Cam:2}", name="LOWT_5A_Cam2")
-#LOWT_5A_Cam2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam15/"
-
-#BTA2_Cam1 = MyDetector("XF:21IDD-OP{BT:A2-Cam:1}", name="BTA2_Cam1")
-#BTA2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam16/"
-
-#BTB2_Cam1 = MyDetector("XF:21IDD-OP{BT:B2-Cam:1}", name="B2BT_Cam1")
-#BTB2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam17/"
-
-#PEEM1B_Cam1 = MyDetector("XF:21IDD-OP{PEEM:1B-Cam:1}", name="PEEM1B_Cam1")
-#PEEM1B_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam18/"
-
-#BTB5_Cam1 = MyDetector("XF:21IDD-OP{BT:B5-Cam:1}", name="BTB5_Cam1")
-#BTB5_Cam1.hdf5.write_path_template = "/nsls2/xf21id/image_files/cam19/"
+Diag1_CamH = create_detector("XF:21IDA-BI{Diag:1-Cam:H}", "cam01", name="Diag1_CamH")
+# Diag1_CamV = create_detector("XF:21IDA-BI{Diag:1-Cam:V}", "cam02", name="Diag1_CamV")
+Lock23A_CamEA3_1 = create_detector("XF:21IDD-BI{ES-Cam:3}", "cam03", name="Lock23A_CamEA3_1")
+# Lock14A_CamEA4_1 = create_detector("XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", "cam04", name="Lock14A_CamEA4_1")
+# Prep2A_CamEA2_1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", "cam05", name="Prep2A_CamEA2_1")
+Mir3_Cam10_U_1 = create_detector("XF:21IDB-BI{Mir:3-Cam:6}", "cam06", name="Mir3_Cam10_U_1")
+# BC1_Diag1_U_1 = create_detector("XF:21IDA-BI{BC:1-Diag:1_U_1}", "cam07", name="BC1_Diag1_U_1")
+# Anal1A_Camlens = create_detector("XF:21IDD-BI{Anal:1A-Cam:lens}", "cam07", name="Anal1A_Camlens")
+# Anal1A_Cambeam = create_detector("XF:21IDD-BI{Anal:1A-Cam:beam}", "cam08", name="Anal1A_Cambeam")
+Prep2A_CamLEED = create_detector("XF:21IDD-BI{ES-Cam:9}", "cam09", name="Prep2A_CamLEED")
+# Prep2A_Camevap1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap1}", "cam10", name="Prep2A_Camevap1")
+# Prep2A_Camevap2 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap2}", "cam11", name="Prep2A_Camevap2")
+LOWT_5A_Cam1 = create_detector("XF:21IDD-OP{ES-Cam:16}", "cam14", name="LOWT_5A_Cam1")
+# LOWT_5A_Cam2 = create_detector("XF:21IDD-OP{LOWT:5A-Cam:2}", "cam15", name="LOWT_5A_Cam2")
+# BTA2_Cam1 = create_detector("XF:21IDD-OP{BT:A2-Cam:1}", "cam16", name="BTA2_Cam1")
+# BTB2_Cam1 = create_detector("XF:21IDD-OP{BT:B2-Cam:1}", "cam17", name="BTB2_Cam1")
+# PEEM1B_Cam1 = create_detector("XF:21IDD-OP{PEEM:1B-Cam:1}", "cam18", name="PEEM1B_Cam1")
+# BTB5_Cam1 = create_detector("XF:21IDD-OP{BT:B5-Cam:1}", "cam19", name="BTB5_Cam1")
 
 all_standard_pros = [
     Diag1_CamH,
