@@ -18,21 +18,9 @@ tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_W
 
 class TiledInserter:
     name = 'arpes'
+
     def insert(self, name, doc):
-        ATTEMPTS = 20
-        error = None
-        for _ in range(ATTEMPTS):
-            try:
-                tiled_writing_client.post_document(name, doc)
-            except Exception as exc:
-                print("Document saving failure:", repr(exc))
-                error = exc
-            else:
-                break
-            time.sleep(2)
-        else:
-            # Out of attempts
-            raise error
+        tiled_writing_client.post_document(name, doc)
 
 tiled_inserter = TiledInserter()
 
@@ -56,7 +44,7 @@ def proposal_path(cycle, data_session):
 
 # Initialize (user-authenticated) Tiled reading client
 print("Initializing Tiled reading client...\nMake sure you check for duo push.")
-tiled_reading_client = cat = from_profile("nsls2", username=None)["arpes"]["raw"]
+tiled_reading_client = from_profile("nsls2", username=None)["arpes"]["raw"]
 
 db = Broker(tiled_reading_client)  # Keep for backcompatibility with older code that uses databroker
 
