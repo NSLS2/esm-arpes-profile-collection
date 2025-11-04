@@ -1,13 +1,9 @@
-import copy
+import numpy
+import os
 
 from bluesky_tiled_plugins import TiledWriter
 from bluesky.callbacks.buffer import BufferingWrapper
 from tiled.client import from_uri
-import os
-import logging
-
-import numpy
-import os
 
 # Define document-specific patches to be applied before sending them to TiledWriter
 
