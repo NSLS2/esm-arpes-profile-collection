@@ -828,8 +828,6 @@ class ESM_monochromator_device:
 #The monochromator definition.
 Eph=ESM_monochromator_device('Eph')
 
-@stage_decorator(detectors)
-@run_decorator(md=_md)
 def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH', c='constant', shutter='close', md=None):
     """Energy list_scan"""
     _md = {
