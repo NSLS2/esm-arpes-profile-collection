@@ -1,4 +1,5 @@
 import IPython
+import functools
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,7 +7,8 @@ from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
 from bluesky.plans import count, scan, adaptive_scan, spiral_fermat, spiral,scan_nd
-from bluesky.plan_stubs import abs_set, mv
+from bluesky.plan_stubs import abs_set, mv, trigger_and_read
+from bluesky.utils import short_uid, Msg
 from bluesky.preprocessors import baseline_decorator, subs_decorator
 # from bluesky.callbacks import LiveTable,LivePlot, CallbackBase
 #from pyOlog.SimpleOlogClient import SimpleOlogClient
@@ -832,3 +834,52 @@ def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH
         yield from count(detectors)
 
 
+def move_per_step_with_energy(step, pos_cache, grating="800", branch="A", EPU="57", LP="LH", c="constant", shutter="close"):
+    """Move per step that allows for energy moves (which require a custom move_to function)"""
+    yield Msg("checkpoint")
+    grp = short_uid("set")
+    for device, pos in pos_cache.items():
+        if pos == pos_cache[device]:
+            continue
+        if isinstance(device, ESM_monochromator_device):
+            yield from device.move_to(pos, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+        else:
+            yield Msg("set", device, pos, group=grp)
+    yield Msg("wait", None, group=grp)
+
+
+def one_nd_step_with_energy(detectors, step, pos_cache, take_reading=None, grating="800", branch="A", EPU="57", LP="LH", c="constant", shutter="close"):
+    """One ND step with possible energy move"""
+    take_reading = trigger_and_read if take_reading is None else take_reading
+    motors = [device for device in pos_cache.keys() if not isinstance(device, ESM_monochromator_device)]
+    yield from move_per_step_with_energy(step, pos_cache, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+    yield from take_reading(list(detectors) + list(motors))
+
+
+def run_with_energy(plan, detectors, *args, grating="800", branch="A", EPU="57", LP="LH", c="constant", shutter="close", **kwargs):
+    """
+    Run a plan with possible energy moves.
+
+    Parameters
+    ----------
+    plan : Generator
+        The plan to run. Must have a per_step argument.
+    detectors : list
+        The detectors to read.
+    *args : list
+        The arguments to pass to the plan. Typically a list of motor or energy positions to scan over.
+    **kwargs : dict
+        The keyword arguments to pass to the plan.
+    
+    Examples
+    --------
+    Scan over energy from 280 to 300 in 100 steps.
+    >>> from bluesky.plans import scan
+    >>> RE(run_with_energy(scan, [mbs], Eph, 280, 300, num=100))
+
+    3D grid scan over energy from 280 to 300 in 100 steps, LT.X and LT.Y from 0 to 5 in 10 steps each.
+    >>> from bluesky.plans import grid_scan
+    >>> RE(run_with_energy(grid_scan, [mbs], Eph, 280, 300, 100, LT.X, 0, 5, 10, LT.Y, 0, 5, 10, snake_axes=False))
+    """
+    per_step = functools.partial(one_nd_step_with_energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+    yield from plan(detectors, *args, per_step=per_step, **kwargs)
