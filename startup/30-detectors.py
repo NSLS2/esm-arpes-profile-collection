@@ -214,8 +214,8 @@ def _convert_path_to_posix(path: Path) -> Path:
     path_str = str(path)
     
     # Replace Z: with the target directory
-    if path_str.startswith("Z:"):
-        path_str = path_str.replace("Z:", "/nsls2/data3/esm/proposals", 1)
+    if path_str.startswith("Y:"):
+        path_str = path_str.replace("Y:", "/nsls2/data3/esm/proposals", 1)
     else:
         return path
     
@@ -354,7 +354,7 @@ class SpectrumAnalyzer(Device, Readable):
             )
 
         # Rebase the path to the assets directory of the current cycle & data session
-        full_path = f"Z:\\{RE.md["cycle"]}\\{RE.md["data_session"]}\\assets\\mbs\\{datetime.now().strftime("%Y\\%m\\%d")}"
+        full_path = f"Y:\\{RE.md["cycle"]}\\{RE.md["data_session"]}\\assets\\mbs\\{datetime.now().strftime("%Y\\%m\\%d")}"
         self.file_path.set(full_path)
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
