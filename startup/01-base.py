@@ -14,7 +14,7 @@ from databroker import Broker
 EpicsSignalBase.set_defaults(connection_timeout=10)
 
 # Configure a Tiled writing client
-tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ESM"])["arpes"]["raw"]
+tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"])["arpes"]["raw"]
 
 class TiledInserter:
     name = 'arpes'

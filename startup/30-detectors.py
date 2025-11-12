@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Optional
 import time as ttime
 from itertools import count as ccount
-from datetime import datetime
 
 import numpy as np
 from bluesky.protocols import Readable, WritesExternalAssets
@@ -209,11 +208,11 @@ def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwa
 
 
 def _convert_path_to_posix(path: Path) -> Path:
-    """Assumes that the path is on a Windows machine with Z: drive."""
+    """Assumes that the path is on a Windows machine with Y: drive."""
     # Convert to string to manipulate
     path_str = str(path)
     
-    # Replace Z: with the target directory
+    # Replace Y: with the target directory
     if path_str.startswith("Y:"):
         path_str = path_str.replace("Y:", "/nsls2/data3/esm/proposals", 1)
     else:
@@ -354,8 +353,9 @@ class SpectrumAnalyzer(Device, Readable):
             )
 
         # Rebase the path to the assets directory of the current cycle & data session
-        full_path = f"Y:\\{RE.md["cycle"]}\\{RE.md["data_session"]}\\assets\\mbs\\{datetime.now().strftime("%Y\\%m\\%d")}"
-        self.file_path.set(full_path)
+        date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+        full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}"
+        self.file_path.put(full_path, use_complete=True)
         path = _convert_path_to_posix(Path(self.file_path.get()))
         file_name = Path(self.file_name.get())
         self._full_path = str(path / file_name)
