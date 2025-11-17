@@ -171,6 +171,14 @@ class BEST_Xaxis(Device):
         # Hand this back the RunEngine immediately.
         return status
 
+    def describe(self):
+        ret = super().describe()
+        for entry in ret.values():
+            entry["dtype"] = "number"
+            entry["shape"] = []
+        return ret
+
+
 class BEST_Yaxis(Device):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
@@ -196,6 +204,13 @@ class BEST_Yaxis(Device):
         self.readback.subscribe(are_we_there_yet)
         # Hand this back the RunEngine immediately.
         return status
+    
+    def describe(self):
+        ret = super().describe()
+        for entry in ret.values():
+            entry["dtype"] = "number"
+            entry["shape"] = []
+        return ret
 
 
 class KB_pair(Device):

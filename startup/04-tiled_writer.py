@@ -36,16 +36,21 @@ def patch_resource(doc):
     return doc
 
 # Initialize the Tiled client and the TiledWriter
-api_key = os.environ.get("TILED_BLUESKY_WRITING_API_KEY_ESM")
+api_key = os.environ.get("TILED_BLUESKY_WRITING_API_KEY_ARPES")
 tiled_writing_client_sql = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)['arpes']['migration']
 tw = TiledWriter(client = tiled_writing_client_sql,
                  backup_directory="/tmp/tiled_backup",
                  patches = {"descriptor": patch_descriptor,
-                            "resource": patch_resource})
+                            "resource": patch_resource},
+                 spec_to_mimetype= {
+                     "AD_HDF5": "application/x-hdf5",
+                     "A1_HDF5": "application/x-hdf5",
+                     "AD_TIFF": "multipart/related;type=image/tiff",
+                 })
 
 # Thread-safe wrapper for TiledWriter
 tw = BufferingWrapper(tw)
 
 # Subscribe the TiledWriter
-RE.md["tiled_access_tags"] = ["esm_beamline"]
+RE.md["tiled_access_tags"] = (RE.md["data_session"],)
 RE.subscribe(tw)
