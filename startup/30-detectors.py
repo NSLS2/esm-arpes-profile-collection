@@ -115,7 +115,7 @@ qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
 
 
 # qem09 not connected as of May 24, 2018
-# qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
+#qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
 ##qem10 = ESMQuadEM("XF:21IDC-BI{EM:10}EM180:", name="qem10")
 # qem11 not connected as of May 24, 2018
 # qem11 = ESMQuadEM('XF:21IDC-BI{EM:11}EM180:', name='qem11')
@@ -310,6 +310,7 @@ class SpectrumAnalyzer(Device, Readable):
     psu_mode = Cpt(EpicsSignal, "PSU_MODE")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
     over_range = Cpt(EpicsSignal, "OVER_RANGE")
+
 
     _min_frames = 100
     """TCP server can't keep up with frame rate faster than this value in non-swept mode"""

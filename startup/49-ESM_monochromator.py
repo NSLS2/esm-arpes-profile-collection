@@ -1,4 +1,5 @@
 import IPython
+import functools
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,8 +7,9 @@ from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
 from bluesky.plans import count, scan, adaptive_scan, spiral_fermat, spiral,scan_nd
-from bluesky.plan_stubs import abs_set, mv
-from bluesky.preprocessors import baseline_decorator, subs_decorator
+from bluesky.plan_stubs import abs_set, mv, trigger_and_read
+from bluesky.utils import short_uid, Msg
+from bluesky.preprocessors import baseline_decorator, subs_decorator, stage_decorator, run_decorator
 # from bluesky.callbacks import LiveTable,LivePlot, CallbackBase
 #from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -826,9 +828,27 @@ class ESM_monochromator_device:
 #The monochromator definition.
 Eph=ESM_monochromator_device('Eph')
 
-def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH', c='constant', shutter='close'):
-    for energy in energies:
-        yield from Eph.move_to(energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
-        yield from count(detectors)
+def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH', c='constant', shutter='close', md=None):
+    """Energy list_scan"""
+    _md = {
+        "plan_name": "scan_energy",
+        "detectors": [det.name for det in detectors],
+        "num_points": len(energies),
+        "grating": grating,
+        "branch": branch,
+        "EPU": EPU,
+        "LP": LP,
+        "c": c,
+        "shutter": shutter,
+    }
+    _md.update(md or {})
 
 
+    @stage_decorator(detectors)
+    @run_decorator(md=_md)
+    def inner_scan():
+        for energy in energies:
+            yield from Eph.move_to(energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+            yield from trigger_and_read(list(detectors) + [PGM.Energy])
+    
+    yield from inner_scan()
