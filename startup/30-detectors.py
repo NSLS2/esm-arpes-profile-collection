@@ -45,6 +45,19 @@ class HDF5PluginWithFileStore(HDF5Plugin, FileStoreHDF5IterativeWrite):
         # return self.num_capture.get()
         return 1
 
+    def collect_asset_docs(self):
+        items = list(self._asset_docs_cache)
+        self._asset_docs_cache.clear()
+        for item in items:
+            if item[0] == "resource":
+                root = item[1]["root"]
+                resource_path = item[1]["resource_path"]
+                if not resource_path.startswith(root):
+                    item[1]["resource_path"] = os.path.join(root, resource_path)
+                item[1]["root"] = ""
+                item[1]["resource_kwargs"].update({"dataset": "entry/instrument/detector/data"})
+            yield item
+
     # AD v2.2.0 (at least) does not have this. It is present in v1.9.1.
     # file_number_sync = None
 
@@ -169,6 +182,11 @@ class MyDetector(SingleTrigger, AreaDetector):
                 data_session=RE.md["data_session"]
             )
         return super().stage()
+
+    def describe(self):
+        ret = super().describe()
+        ret[f"{self.name}_image"]["dtype_numpy"] = numpy.dtype(self.cam.data_type.get(as_string=True).lower()).str
+        return ret
 
     def set_primary(self, n, value=None):
         if "All" in n:
@@ -425,9 +443,9 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
     def _generate_resource(self):
         self._composer = compose_resource(
             spec="A1_HDF5",
-            root=str(Path(self._full_path).parent),
+            root="",
             resource_path=self._full_path,
-            resource_kwargs={"frame_per_point": 1},
+            resource_kwargs={"frame_per_point": 1, "dataset": "entry/instrument/analyzer/data"},
             path_semantics="posix",
         )
         self._asset_docs_cache.append(("resource", self._composer.resource_doc))
