@@ -13,4 +13,6 @@ startup/.42-ESM_monochromator.py
 startup/#43-ESM_utilities.py#
 startup/esm_old.py
 
-.idea
+.idea# pixi environments
+.pixi/*
+!.pixi/config.toml
