@@ -12,7 +12,7 @@ bluesky-base = ">=1.14.4"
 bluesky-queueserver = "*"
 matplotlib-base= ">=3.9.3,<4"
 networkx = ">=3.4.2,<4"
-nslsii = "==0.11.4"
+# nslsii = "==0.11.4"
 numpy = "*"
 ophyd = ">=1.11.0"
 pyepics = "*"
@@ -32,6 +32,7 @@ bluesky-tiled-plugins = ">=2.0.0b68"
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
+nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "sync_experiment_tiled" }
 
 
 [feature.qs.dependencies]
@@ -60,3 +61,6 @@ pvs = "ipython --profile-dir=. -c 'get_pv_types(); exit()'"
 [environments]
 terminal = {features=["profile", "terminal"], solve-group="profile"}
 qs = {features=["profile", "qs"], solve-group="profile"}
+
+[dependencies]
+python-confluent-kafka = ">=2.12.2,<3"
