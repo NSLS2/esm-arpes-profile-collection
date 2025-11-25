@@ -62,7 +62,8 @@ def mock_all_ophyd_devices():
 def mock_services():
     with patch("redis.Redis", return_value=MagicMock()), \
          patch("tiled.client.from_profile", return_value=MagicMock()), \
-         patch("tiled.client.from_uri", return_value=MagicMock()):
+         patch("tiled.client.from_uri", return_value=MagicMock()), \
+         patch("pyOlog.SimpleOlogClient", return_value=MagicMock()):
         os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"] = "<mocked_api_key>"
         yield
 
@@ -73,8 +74,7 @@ def mock_nslsii():
         ipython_user_ns['db'] = MagicMock()
         ipython_user_ns['sd'] = MagicMock()
 
-    with patch('nslsii.configure_base', side_effect=mock_configure_base), \
-         patch('nslsii.configure_olog'):
+    with patch('nslsii.configure_base', side_effect=mock_configure_base):
         yield
 
 
