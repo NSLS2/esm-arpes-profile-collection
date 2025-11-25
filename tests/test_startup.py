@@ -66,6 +66,7 @@ def mock_services():
          patch("pyOlog.SimpleOlogClient", return_value=MagicMock()):
         os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"] = "<mocked_api_key>"
         yield
+    del os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"]
 
 @pytest.fixture(scope='function', autouse=True)
 def mock_nslsii():
