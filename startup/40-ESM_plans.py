@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,8 +7,9 @@ from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
 from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
-from bluesky.plan_stubs import abs_set, mv
-from bluesky.preprocessors import baseline_decorator, subs_decorator
+from bluesky.plan_stubs import abs_set, mv, caching_repeater, unstage_all
+from bluesky.preprocessors import baseline_decorator, subs_decorator, run_decorator, stub_wrapper, plan_mutator, finalize_wrapper
+from bluesky.utils import plan, make_decorator, root_ancestor, Msg
 # from bluesky.callbacks import LiveTable, LivePlot, CallbackBase
 ###from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -16,8 +19,125 @@ import math
 import re
 from boltons.iterutils import chunked
 
+# ================================================================================================================
+# TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1976 
+# ================================================================================================================
+def fixed_lazily_stage_wrapper(plan):
+    """
+    This is a preprocessor that inserts 'stage' messages and appends 'unstage'.
+
+    The first time an object is seen in `plan`, it is staged. To avoid
+    redundant staging we actually stage the object's ultimate parent.
+
+    At the end, in a `finally` block, an 'unstage' Message issued for every
+    'stage' Message.
+
+    Parameters
+    ----------
+    plan : iterable or iterator
+        a generator, list, or similar containing `Msg` objects
+
+    Yields
+    ------
+    msg : Msg
+        messages from plan with 'stage' messages inserted and 'unstage'
+        messages appended
+    """
+    COMMANDS = set(["read", "set", "trigger", "kickoff"])  # noqa: C405
+    # Cache devices in the order they are staged; then unstage in reverse.
+    devices_staged = []
+
+    def inner(msg):
+        if msg.command in COMMANDS:
+            root = root_ancestor(msg.obj)
+            if root not in devices_staged:
+
+                def new_gen():
+                    # Here we insert a 'stage' message
+                    ret = yield Msg("stage", root)
+                    # and cache the result
+                    if ret is None:
+                        # The generator may be being list-ified.
+                        # This is a hack to make that possible.
+                        ret = [root]
+                    devices_staged.extend(ret)
+                    # and then proceed with our regularly scheduled programming
+                    yield msg
+
+                return new_gen(), None
+        return None, None
+
+    def inner_unstage_all():
+        yield from unstage_all(*reversed(devices_staged))
+
+    return (yield from finalize_wrapper(plan_mutator(plan, inner), inner_unstage_all()))
+
+fixed_lazily_stage_decorator = make_decorator(fixed_lazily_stage_wrapper)
+# ================================================================================================================
+# ================================================================================================================
+# TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1974
+# ================================================================================================================
+def single_run_repeat_wrapper(plan, num_repeats=1, md=None):
+    """
+    Wrap a plan to repeat it a given number of times and wrap it in a single run.
+
+    Lazy staging so that the devices are only staged/unstaged once for the entire plan.
+
+    Parameters
+    ----------
+    plan : MsgGenerator
+        The plan to wrap as a generator.
+    num_repeats : int, optional
+        Number of times to repeat the plan. Default is 1.
+    md : dict, optional
+        Metadata to add to the wrapped plan.
+    """
+
+    # Extract the metadata from the plan and cache it
+    cached_plan = list(plan)
+    _md = md or {}
+    for msg in cached_plan:
+        if msg.command == "open_run":
+            _md.update(msg.kwargs)
+            break
+    _md.update(
+        {
+            "num_repeats": num_repeats,
+        }
+    )
+
+    @fixed_lazily_stage_decorator()
+    @run_decorator(md=_md)
+    def inner():
+        return (yield from caching_repeater(num_repeats, stub_wrapper(msg for msg in cached_plan)))
+
+    return (yield from inner())
+# ================================================================================================================
 
 
+@plan
+def repeat_scan(*args, num_repeats=1, md=None, **kwargs):
+    """
+    Repeat a scan a given number of times. Stages/unstages the devices only once for the entire plan
+    and keeps all data within a single Bluesky run.
+
+    Parameters
+    ----------
+    *args : Any
+        Positional arguments to pass to the scan plan.
+    num_repeats : int, optional
+        Number of times to repeat the scan. Default is 1.
+    md : dict, optional
+        Additional metadata to add to the wrapped plan.
+    **kwargs : Any
+        Keyword arguments to pass to the scan plan.
+
+    Returns
+    -------
+    uid : str
+        The unique identifier of the run.
+    """
+    return (yield from single_run_repeat_wrapper(scan(*args, **kwargs), num_repeats=num_repeats, md=md))
 
 
 ###COLLECTING DATA
