@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,8 +7,9 @@ from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
 from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
-from bluesky.plan_stubs import abs_set, mv
-from bluesky.preprocessors import baseline_decorator, subs_decorator
+from bluesky.plan_stubs import abs_set, mv, caching_repeater
+from bluesky.preprocessors import baseline_decorator, subs_decorator, run_decorator, stub_wrapper, lazily_stage_decorator
+from bluesky.utils import plan
 # from bluesky.callbacks import LiveTable, LivePlot, CallbackBase
 ###from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -17,7 +20,70 @@ import re
 from boltons.iterutils import chunked
 
 
+# ================================================================================================================
+# TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1974
+# ================================================================================================================
+def single_run_repeat_wrapper(plan, num_repeats=1, md=None):
+    """
+    Wrap a plan to repeat it a given number of times and wrap it in a single run.
 
+    Lazy staging so that the devices are only staged/unstaged once for the entire plan.
+
+    Parameters
+    ----------
+    plan : MsgGenerator
+        The plan to wrap as a generator.
+    num_repeats : int, optional
+        Number of times to repeat the plan. Default is 1.
+    md : dict, optional
+        Metadata to add to the wrapped plan.
+    """
+
+    # Extract the metadata from the plan and cache it
+    cached_plan = list(plan)
+    _md = md or {}
+    for msg in cached_plan:
+        if msg.command == "open_run":
+            _md.update(msg.kwargs)
+            break
+    _md.update(
+        {
+            "num_repeats": num_repeats,
+        }
+    )
+
+    @lazily_stage_decorator()
+    @run_decorator(md=_md)
+    def inner():
+        return (yield from caching_repeater(num_repeats, stub_wrapper(msg for msg in cached_plan)))
+
+    return (yield from inner())
+# ================================================================================================================
+
+
+@plan
+def repeat_scan(*args, num_repeats=1, md=None, **kwargs):
+    """
+    Repeat a scan a given number of times. Stages/unstages the devices only once for the entire plan
+    and keeps all data within a single Bluesky run.
+
+    Parameters
+    ----------
+    *args : Any
+        Positional arguments to pass to the scan plan.
+    num_repeats : int, optional
+        Number of times to repeat the scan. Default is 1.
+    md : dict, optional
+        Additional metadata to add to the wrapped plan.
+    **kwargs : Any
+        Keyword arguments to pass to the scan plan.
+
+    Returns
+    -------
+    uid : str
+        The unique identifier of the run.
+    """
+    return (yield from single_run_repeat_wrapper(scan(*args, **kwargs), num_repeats=num_repeats, md=md))
 
 
 ###COLLECTING DATA
