@@ -32,7 +32,7 @@ bluesky-tiled-plugins = ">=2.0.0b68"
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
-nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "sync_experiment_tiled" }
+nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "ca51763" }
 
 
 [feature.qs.dependencies]
