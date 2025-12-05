@@ -341,6 +341,20 @@ class SpectrumAnalyzer(Device, Readable):
         self._composer = None
         self._full_path = None
 
+    @property
+    def writing_path(self) -> str:
+        if not self._full_path:
+            path = _convert_path_to_posix(Path(self.file_path.get()))
+            file_name = Path(self.file_name.get())
+            if not path:
+                date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+                path = _convert_path_to_posix(f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}")
+            if not file_name:
+                return str(path)
+            return str(path / file_name)
+
+        return self._full_path
+
     def stage(self):
         if self.file_capture.get(as_string=True) == "On":
             raise RuntimeError(
