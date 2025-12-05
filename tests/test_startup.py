@@ -9,13 +9,17 @@ import matplotlib
 matplotlib.use('Agg')
 
 
-@pytest.fixture(scope='function', autouse=True)
+@pytest.fixture
 def mock_all_ophyd_devices():
     """
     Mock EpicsSignalBase methods to prevent any EPICS connections.
     All signals return 0 for reads and do nothing for writes.
     """
     import ophyd
+
+    @classmethod
+    def cls_noop(cls, *args, **kwargs):
+        return
     
     def noop(self, *args, **kwargs):
         return
@@ -35,6 +39,7 @@ def mock_all_ophyd_devices():
         'EpicsSignalBase.put': ophyd.signal.EpicsSignalBase.put,
         'EpicsSignalBase.subscribe': ophyd.signal.EpicsSignalBase.subscribe,
         'EpicsSignalBase.set': ophyd.signal.EpicsSignalBase.set,
+        'EpicsSignalBase.set_defaults': ophyd.signal.EpicsSignalBase.set_defaults,
     }
 
     # Apply mocks
@@ -45,6 +50,7 @@ def mock_all_ophyd_devices():
     ophyd.signal.EpicsSignalBase.put = noop
     ophyd.signal.EpicsSignalBase.subscribe = mock_subscribe
     ophyd.signal.EpicsSignalBase.set = noop
+    ophyd.signal.EpicsSignalBase.set_defaults = cls_noop
     
     yield
     
@@ -56,9 +62,10 @@ def mock_all_ophyd_devices():
     ophyd.signal.EpicsSignalBase.put = originals['EpicsSignalBase.put']
     ophyd.signal.EpicsSignalBase.subscribe = originals['EpicsSignalBase.subscribe']
     ophyd.signal.EpicsSignalBase.set = originals['EpicsSignalBase.set']
+    ophyd.signal.EpicsSignalBase.set_defaults = originals['EpicsSignalBase.set_defaults']
 
 
-@pytest.fixture(scope="function", autouse=True)
+@pytest.fixture
 def mock_services():
     with patch("redis.Redis", return_value=MagicMock()), \
          patch("tiled.client.from_profile", return_value=MagicMock()), \
@@ -68,7 +75,7 @@ def mock_services():
         yield
     del os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"]
 
-@pytest.fixture(scope='function', autouse=True)
+@pytest.fixture
 def mock_nslsii():
     def mock_configure_base(ipython_user_ns, beamline_name, **kwargs):
         ipython_user_ns['RE'] = MagicMock()
@@ -88,7 +95,8 @@ def startup_dir():
     sys.path.remove(str(startup_dir))
 
 
-def test_startup(startup_dir):
+@pytest.fixture
+def startup_shell(mock_all_ophyd_devices, mock_services, mock_nslsii, startup_dir):
     from IPython.core.interactiveshell import InteractiveShell
     from IPython.core.profiledir import ProfileDir
     
@@ -100,17 +108,23 @@ def test_startup(startup_dir):
     
     try:
         for file in sorted(startup_dir.glob("*.py")):
+            print(f"Running {file}")
             with open(file, "r") as f:
                 code = f.read()
             result = shell.run_cell(code, store_history=True, silent=True)
             result.raise_error()
-        
-        ns = shell.user_ns
-        
-        # Bluesky core
-        assert "RE" in ns, "RunEngine not found"
-        assert "db" in ns, "Databroker not found"
-        assert "sd" in ns, "SupplementalData not found"
-    
+        globals().update(shell.user_ns)
+        yield shell
     finally:
         InteractiveShell.clear_instance()
+
+
+def test_startup(startup_shell):
+    assert "RE" in globals(), "RunEngine not found"
+    assert "db" in globals(), "Databroker not found"
+    assert "sd" in globals(), "SupplementalData not found"
+
+
+def test_old_gui_can_launch(startup_shell):
+    old_gui()
+
