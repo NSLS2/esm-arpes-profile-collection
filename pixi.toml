@@ -32,7 +32,6 @@ bluesky-tiled-plugins = ">=2.0.0b68"
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
 nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "ca51763" }
-bsstudio = { git = "https://github.com/NSLS2/esm-bsstudio", rev = "master" }
 
 
 [feature.qs.dependencies]
@@ -54,6 +53,8 @@ pyside6 = "*"
 numpy = ">2"
 pyqt = ">=5.15.11,<6"
 
+[feature.terminal.pypi-dependencies]
+bsstudio = { git = "https://github.com/NSLS2/esm-bsstudio", rev = "master" }
 
 [feature.terminal.tasks]
 start = "unset SESSION_MANAGER && MPLBACKEND=qtagg ipython --profile-dir=."
