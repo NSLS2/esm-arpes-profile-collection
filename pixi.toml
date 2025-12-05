@@ -29,10 +29,10 @@ p4p = ">=4.2.0,<5"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 bluesky-tiled-plugins = ">=2.0.0b68"
 
-
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
 nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "ca51763" }
+bsstudio = { git = "https://github.com/NSLS2/esm-bsstudio", rev = "master" }
 
 
 [feature.qs.dependencies]
@@ -52,6 +52,7 @@ qs-server = "uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
 ipython = ">=9.5.0"
 pyside6 = "*"
 numpy = ">2"
+pyqt = ">=5.15.11,<6"
 
 
 [feature.terminal.tasks]

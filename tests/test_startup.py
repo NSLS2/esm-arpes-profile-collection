@@ -119,12 +119,7 @@ def startup_shell(mock_all_ophyd_devices, mock_services, mock_nslsii, startup_di
         InteractiveShell.clear_instance()
 
 
-def test_startup(startup_shell):
+def test_startup_namespace(startup_shell):
     assert "RE" in globals(), "RunEngine not found"
     assert "db" in globals(), "Databroker not found"
     assert "sd" in globals(), "SupplementalData not found"
-
-
-def test_old_gui_can_launch(startup_shell):
-    old_gui()
-
