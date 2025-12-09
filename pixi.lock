@@ -491,7 +491,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/56/6d/0d9848617b9f753b87f214f1c682592f7ca42de085f564352f10f0843026/ipywidgets-8.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=ca51763#ca51763c2313cbb4ae4fcd37f8f7d18b575bb081
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/35/0f/7820e5e0d3990b5916e70706c6b19a34b6335e2be2aca6f4e70b6a99cc5e/ophyd_async-0.12.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
@@ -1013,7 +1013,7 @@ environments:
       - pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#1458fc4b6df4c3dec3e587fa8854d4a3a241efb9
       - pypi: https://files.pythonhosted.org/packages/56/6d/0d9848617b9f753b87f214f1c682592f7ca42de085f564352f10f0843026/ipywidgets-8.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=ca51763#ca51763c2313cbb4ae4fcd37f8f7d18b575bb081
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/35/0f/7820e5e0d3990b5916e70706c6b19a34b6335e2be2aca6f4e70b6a99cc5e/ophyd_async-0.12.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
@@ -1538,7 +1538,7 @@ environments:
       - pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#1458fc4b6df4c3dec3e587fa8854d4a3a241efb9
       - pypi: https://files.pythonhosted.org/packages/56/6d/0d9848617b9f753b87f214f1c682592f7ca42de085f564352f10f0843026/ipywidgets-8.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=ca51763#ca51763c2313cbb4ae4fcd37f8f7d18b575bb081
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/35/0f/7820e5e0d3990b5916e70706c6b19a34b6335e2be2aca6f4e70b6a99cc5e/ophyd_async-0.12.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
@@ -6147,9 +6147,9 @@ packages:
   purls: []
   size: 3843
   timestamp: 1582593857545
-- pypi: git+https://github.com/nmaytan/nslsii.git?rev=ca51763#ca51763c2313cbb4ae4fcd37f8f7d18b575bb081
+- pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
   name: nslsii
-  version: 0+untagged.792.gca51763
+  version: 0+untagged.794.g78a2646
   requires_dist:
   - appdirs
   - bluesky-kafka>=0.8.0
