@@ -265,7 +265,8 @@ class SpectrumAnalyzer(Device, Readable):
 
     # File writing
     file_capture = Cpt(EpicsSignal, "FILE:CAPTURE")
-    file_name = Cpt(EpicsSignal, "FILE:NAME", string=True)
+    file_prefix = Cpt(EpicsSignal, "FILE:PREFIX", string=True)
+    file_name = Cpt(EpicsSignalRO, "FILE:NAME", string=True)
     file_path = Cpt(EpicsSignal, "FILE:PATH", string=True)
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
@@ -390,18 +391,23 @@ class SpectrumAnalyzer(Device, Readable):
         full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}"
         self.file_path.put(full_path, use_complete=True)
         path = _convert_path_to_posix(Path(self.file_path.get()))
-        file_name = Path(self.file_name.get())
-        self._full_path = str(path / file_name)
-        self._index = 0
-        self._last_emitted_index = 0
-
         # Subscribe to state and live max count exceeded to
         # handle the acquisition status
         self.state.subscribe(self._state_changed, run=False)
         self.live_max_count_exceeded.subscribe(
             self._live_max_count_exceeded_monitor, run=False
         )
-        return super().stage()
+
+        # Stage-sigs
+        ret = super().stage()
+
+        # Get actual file name
+        file_name = Path(self.file_name.get())
+        self._full_path = str(path / file_name)
+        self._index = 0
+        self._last_emitted_index = 0
+
+        return ret
 
     def _state_changed(self, value=None, old_value=None, **kwargs):
         if (
