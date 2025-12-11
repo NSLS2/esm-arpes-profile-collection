@@ -44,7 +44,7 @@ if not (tiled_reading_api_key := apikey_redis_client.get("esm-arpes-apikey-activ
         raise
 
 # Initialize (user-authenticated) Tiled reading client
-tiled_reading_client = from_uri("http://tiled.nsls2.bnl.gov", api_key=tiled_reading_api_key)["arpes"]["migration"]
+tiled_reading_client = from_uri("http://tiled.nsls2.bnl.gov", api_key=tiled_reading_api_key, remember_me=False)["arpes"]["migration"]
 
 
 # Set timeout for all EpicsSignalBase objects
