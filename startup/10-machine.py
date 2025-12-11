@@ -375,3 +375,9 @@ BTB5_GVB5 = TwoButtonShutter('XF:21IDC-VA{BT:B5-GV:B5_D_1}', name='BTB5_GVB5')
 
 #Section D, (A Branch endstation)
 Anal1A_GVEA1 = TwoButtonShutter('XF:21IDD-VA{ANAL:1A-GV:EA1_1}', name='Anal1A_GVEA1')
+
+# Temperature monitoring
+D1 = EpicsSignalRO("XF:21IDD-ES{PS:Heat3}D1_RB", name="D1")
+D2 = EpicsSignalRO("XF:21IDD-ES{PS:Heat3}D2_RB", name="D2")
+Stinger = EpicsSignalRO("XF:21ID1-ES{TCtrl:2-Chan:A}T-I", name="Stinger")
+

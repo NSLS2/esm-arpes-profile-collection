@@ -20,7 +20,7 @@ This section is used to define a few settings values that are used for all scans
 
 #sd.baseline = [BeamSource, EPU105, FEslit, M1, PGM, M3, ExitSlitA, ExitSlitB, M4A, M4B, LT, SP]
 #sd.baseline = [BeamSource,EPU57, EPU105, FEslit, M1, PGM, M3, ExitSlitA, ExitSlitB, M4A, M4B, LT, SP]
-sd.baseline = [BeamSource,EPU57, EPU105, FEslit, M1, PGM, M3, ExitSlitA, ExitSlitB, M4A, M4B, LT]
+sd.baseline = [BeamSource,EPU57, EPU105, FEslit, M1, PGM, M3, ExitSlitA, ExitSlitB, M4A, M4B, LT, D1, D2, Stinger]
 
 #This line command defines the list of motor axes that are to be displayed when using the magics
 # command %wa.
