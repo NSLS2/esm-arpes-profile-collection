@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Optional
 import time as ttime
@@ -349,7 +350,11 @@ class SpectrumAnalyzer(Device, Readable):
             file_name = Path(self.file_name.get())
             if not path:
                 date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
-                path = _convert_path_to_posix(f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}")
+                sample_name = RE.md.get("sample_name", "no-sample")
+                if not re.fullmatch(r"^[\w-]+$", sample_name):
+                    raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
+                                      "Only characters, underscores, or dashes are valid.") 
+                path = _convert_path_to_posix(f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}")
             if not file_name:
                 return str(path)
             return str(path / file_name)
@@ -388,7 +393,12 @@ class SpectrumAnalyzer(Device, Readable):
 
         # Rebase the path to the assets directory of the current cycle & data session
         date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
-        full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}"
+        sample_name = RE.md.get("sample_name", "no-sample")
+        if not re.fullmatch(r"^[\w-]+$", sample_name):
+            raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
+                              "Only characters, underscores, or dashes are valid.") 
+        
+        full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}"
         self.file_path.put(full_path, use_complete=True)
         path = _convert_path_to_posix(Path(self.file_path.get()))
         # Subscribe to state and live max count exceeded to
