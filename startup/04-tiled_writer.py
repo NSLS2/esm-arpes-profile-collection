@@ -46,7 +46,8 @@ tw = TiledWriter(client = tiled_writing_client_sql,
                      "AD_HDF5": "application/x-hdf5",
                      "A1_HDF5": "application/x-hdf5",
                      "AD_TIFF": "multipart/related;type=image/tiff",
-                 })
+                 },
+                 batch_size=1)
 
 # Thread-safe wrapper for TiledWriter
 tw = BufferingWrapper(tw)
