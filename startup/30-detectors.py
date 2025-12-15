@@ -327,7 +327,7 @@ class SpectrumAnalyzer(Device, Readable):
     xscale_max = Cpt(EpicsSignal, "XSCALE_MAX", kind="config")
     xscale_min = Cpt(EpicsSignal, "XSCALE_MIN", kind="config")
     xscale_name = Cpt(EpicsSignal, "XSCALE_NAME")
-    psu_mode = Cpt(EpicsSignal, "PSU_MODE")
+    psu_mode = Cpt(EpicsSignal, "PSU_MODE", kind="config")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
     over_range = Cpt(EpicsSignal, "OVER_RANGE")
 
