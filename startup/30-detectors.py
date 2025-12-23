@@ -369,11 +369,11 @@ class SpectrumAnalyzer(Device, Readable):
 
         # Must be in standby to start
         if self.state.get(as_string=True) == "RUNNING":
-            self.acquire.set(0).wait(3.0)
+            self.acquire.put(0, use_complete=True)
 
         # Must be live monitoring to start
         if self.live_monitoring.get(as_string=True) == "Off":
-            self.live_monitoring.set("On").wait(3.0)
+            self.live_monitoring.put("On", use_complete=True)
 
         # File capture must be on and then turned off at unstage
         self.stage_sigs.update(
@@ -451,8 +451,8 @@ class SpectrumAnalyzer(Device, Readable):
 
     def unstage(self):
         if self.state.get(as_string=True) == "RUNNING":
-            self.acquire.set(0).wait(3.0)
-        self.det_off.set(1).wait(3.0)
+            self.acquire.put(0, use_complete=True)
+        self.det_off.put(1, use_complete=True)
         super().unstage()
         self.state.unsubscribe(self._state_changed)
         self.live_max_count_exceeded.unsubscribe(self._live_max_count_exceeded_monitor)

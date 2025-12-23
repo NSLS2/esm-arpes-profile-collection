@@ -48,7 +48,7 @@ tiled_reading_client = from_uri("http://tiled.nsls2.bnl.gov", api_key=tiled_read
 
 
 # Set timeout for all EpicsSignalBase objects
-EpicsSignalBase.set_defaults(connection_timeout=10)
+EpicsSignalBase.set_defaults(timeout=10.0, connection_timeout=10.0)
 
 # Configure a Tiled writing client
 tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"])["arpes"]["raw"]
