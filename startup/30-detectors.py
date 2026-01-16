@@ -281,8 +281,11 @@ class SpectrumAnalyzer(Device, Readable):
     file_prefix = Cpt(EpicsSignal, "FILE:PREFIX", string=True)
     file_name = Cpt(EpicsSignalRO, "FILE:NAME", string=True, kind="config")
     file_path = Cpt(EpicsSignal, "FILE:PATH", string=True, kind="config")
+    file_mode = Cpt(EpicsSignal, "FILE:MODE", string=True, kind="config")
+    file_aggregate_precision = Cpt(EpicsSignal, "FILE:AGG_PRECISION", kind="config")
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
+    total_intensity = Cpt(EpicsSignalRO, "TOTAL_INTENSITY")
 
     # Detector parameters
     state = Cpt(EpicsSignalRO, "STATE", string=True)
