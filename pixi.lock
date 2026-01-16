@@ -1010,7 +1010,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
       - pypi: https://files.pythonhosted.org/packages/5b/08/185c3b29b0698328b202e6c965c23187e2e29ead78cb468aab0a09ee97fc/aioca-1.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
-      - pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#1458fc4b6df4c3dec3e587fa8854d4a3a241efb9
+      - pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#a4fee57acd385f0599063cb1e0149ebb65faceb5
       - pypi: https://files.pythonhosted.org/packages/56/6d/0d9848617b9f753b87f214f1c682592f7ca42de085f564352f10f0843026/ipywidgets-8.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl
       - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
@@ -2414,7 +2414,7 @@ packages:
   purls: []
   size: 168501
   timestamp: 1761758949420
-- pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#1458fc4b6df4c3dec3e587fa8854d4a3a241efb9
+- pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=master#a4fee57acd385f0599063cb1e0149ebb65faceb5
   name: bsstudio
   version: 1.0.1
   requires_python: '>=3.6'
