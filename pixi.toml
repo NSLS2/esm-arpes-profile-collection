@@ -33,7 +33,7 @@ nexusformat = ">=2.0.0,<3"
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
 nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "78a2646" }
-
+blop = { git = "https://github.com/NSLS-II/blop.git", rev = "b52aae1" }
 
 [feature.qs.dependencies]
 bluesky-queueserver = "*"
