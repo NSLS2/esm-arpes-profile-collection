@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Optional
 import time as ttime
@@ -44,6 +45,19 @@ class HDF5PluginWithFileStore(HDF5Plugin, FileStoreHDF5IterativeWrite):
     def get_frames_per_point(self):
         # return self.num_capture.get()
         return 1
+
+    def collect_asset_docs(self):
+        items = list(self._asset_docs_cache)
+        self._asset_docs_cache.clear()
+        for item in items:
+            if item[0] == "resource":
+                root = item[1]["root"]
+                resource_path = item[1]["resource_path"]
+                if not resource_path.startswith(root):
+                    item[1]["resource_path"] = os.path.join(root, resource_path)
+                item[1]["root"] = ""
+                item[1]["resource_kwargs"].update({"dataset": "entry/instrument/detector/data"})
+            yield item
 
     # AD v2.2.0 (at least) does not have this. It is present in v1.9.1.
     # file_number_sync = None
@@ -161,12 +175,31 @@ class MyDetector(SingleTrigger, AreaDetector):
     roi4 = Cpt(ROIPlugin, "ROI4:")
     proc1 = Cpt(ProcessPlugin, "Proc1:")
 
+    # Overwritten in factory function
     hdf5 = Cpt(
         HDF5PluginWithFileStore,
         suffix="HDF1:",
-        write_path_template="/nsls2/data/esm/legacy/image_files/",  # trailing slash!
-        root="/nsls2/data/esm/legacy/",
+        write_path_template=f"{proposal_path_template()}/assets/default/",  # trailing slash!
+        root="/nsls2/data/esm/proposals",
     )
+
+    def stage(self):
+        self.hdf5.write_path_template = self.hdf5.write_path_template.format(
+            cycle=RE.md["cycle"],
+            data_session=RE.md["data_session"]
+        )
+        # FIXME: private member access
+        if self.hdf5._read_path_template is not None:
+            self.hdf5.read_path_template = self.hdf5.read_path_template.format(
+                cycle=RE.md["cycle"],
+                data_session=RE.md["data_session"]
+            )
+        return super().stage()
+
+    def describe(self):
+        ret = super().describe()
+        ret[f"{self.name}_image"]["dtype_numpy"] = numpy.dtype(self.cam.data_type.get(as_string=True).lower()).str
+        return ret
 
     def set_primary(self, n, value=None):
         if "All" in n:
@@ -194,14 +227,25 @@ class MyDetector(SingleTrigger, AreaDetector):
                     getattr(stats, val).kind = 'hinted'
 
 
+def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwargs):
+    class MyDetectorSubclass(MyDetector):
+        hdf5 = Cpt(
+            HDF5PluginWithFileStore,
+            suffix="HDF1:",
+            write_path_template=f"{proposal_path_template()}/assets/{write_path_suffix}/{template_suffix}",
+            root="/nsls2/data/esm/proposals",
+        )
+    return MyDetectorSubclass(prefix, **kwargs)
+
+
 def _convert_path_to_posix(path: Path) -> Path:
-    """Assumes that the path is on a Windows machine with Z: drive."""
+    """Assumes that the path is on a Windows machine with Y: drive."""
     # Convert to string to manipulate
     path_str = str(path)
     
-    # Replace Z: with the target directory
-    if path_str.startswith("Z:"):
-        path_str = path_str.replace("Z:", "/nsls2/data3/esm/legacy", 1)
+    # Replace Y: with the target directory
+    if path_str.startswith("Y:"):
+        path_str = path_str.replace("Y:", "/nsls2/data3/esm/proposals", 1)
     else:
         return path
     
@@ -209,6 +253,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     path_str = path_str.replace("\\", "/")
     
     return Path(path_str)
+
 
 class SpectrumAnalyzer(Device, Readable):
     # Acquisition control
@@ -222,9 +267,9 @@ class SpectrumAnalyzer(Device, Readable):
     live_monitoring = Cpt(EpicsSignal, "LIVE:MONITORING")
     live_max_count = Cpt(EpicsSignalRO, "LIVE:MAX_COUNT")
     live_last_update = Cpt(EpicsSignalRO, "LIVE:LAST_UPDATE")
-    live_max_count_threshold = Cpt(EpicsSignal, "LIVE:MAX_COUNT_THRESH")
+    live_max_count_threshold = Cpt(EpicsSignal, "LIVE:MAX_COUNT_THRESH", kind="config")
     live_max_count_exceeded = Cpt(EpicsSignal, "LIVE:MAX_COUNT_EXCEEDED")
-    live_max_count_avg_n = Cpt(EpicsSignal, "LIVE:MAX_COUNT_AVG_N")
+    live_max_count_avg_n = Cpt(EpicsSignal, "LIVE:MAX_COUNT_AVG_N", kind="config")
 
     # Status and info
     connection_status = Cpt(EpicsSignalRO, "SYS:CONNECTED")
@@ -233,39 +278,43 @@ class SpectrumAnalyzer(Device, Readable):
 
     # File writing
     file_capture = Cpt(EpicsSignal, "FILE:CAPTURE")
-    file_name = Cpt(EpicsSignal, "FILE:NAME", string=True)
-    file_path = Cpt(EpicsSignal, "FILE:PATH", string=True)
+    file_prefix = Cpt(EpicsSignal, "FILE:PREFIX", string=True)
+    file_name = Cpt(EpicsSignalRO, "FILE:NAME", string=True, kind="config")
+    file_path = Cpt(EpicsSignal, "FILE:PATH", string=True, kind="config")
+    file_mode = Cpt(EpicsSignal, "FILE:MODE", string=True, kind="config")
+    file_aggregate_precision = Cpt(EpicsSignal, "FILE:AGG_PRECISION", kind="config")
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
+    total_intensity = Cpt(EpicsSignalRO, "TOTAL_INTENSITY")
 
     # Detector parameters
     state = Cpt(EpicsSignalRO, "STATE", string=True)
     endX = Cpt(EpicsSignal, "ENDX")
     startY = Cpt(EpicsSignal, "STARTY")
-    num_slice = Cpt(EpicsSignal, "NUM_SLICE")
+    num_slice = Cpt(EpicsSignal, "NUM_SLICE", kind="config")
     endY = Cpt(EpicsSignal, "ENDY")
     startX = Cpt(EpicsSignal, "STARTX")
-    frames = Cpt(EpicsSignal, "FRAMES")
-    num_steps = Cpt(EpicsSignal, "NUM_STEPS")
-    pass_energy = Cpt(EpicsSignal, "PASS_ENERGY")
-    lens_mode = Cpt(EpicsSignal, "LENS_MODE")
-    num_scans = Cpt(EpicsSignal, "NUM_SCANS")
+    frames = Cpt(EpicsSignal, "FRAMES", kind="config")
+    num_steps = Cpt(EpicsSignal, "NUM_STEPS", kind="config")
+    pass_energy = Cpt(EpicsSignal, "PASS_ENERGY", string=True, kind="config")
+    lens_mode = Cpt(EpicsSignal, "LENS_MODE", string=True, kind="config")
+    num_scans = Cpt(EpicsSignal, "NUM_SCANS", kind="config")
     reg_num = Cpt(EpicsSignal, "REG_NUM")
-    tot_steps = Cpt(EpicsSignal, "TOT_STEPS")
+    tot_steps = Cpt(EpicsSignal, "TOT_STEPS", kind="config")
     add_fms = Cpt(EpicsSignal, "ADD_FMS")
     act_scans = Cpt(EpicsSignalRO, "ACT_SCANS")
     dith_steps = Cpt(EpicsSignal, "DITH_STEPS")
-    start_ke = Cpt(EpicsSignal, "START_KE")
-    step_size = Cpt(EpicsSignal, "STEP_SIZE")
-    end_ke = Cpt(EpicsSignal, "END_KE")
+    start_ke = Cpt(EpicsSignal, "START_KE", kind="config")
+    step_size = Cpt(EpicsSignal, "STEP_SIZE", kind="config")
+    end_ke = Cpt(EpicsSignal, "END_KE", kind="config")
     spin_offs = Cpt(EpicsSignal, "SPIN_OFFS")
-    width = Cpt(EpicsSignal, "WIDTH")
-    center_ke = Cpt(EpicsSignal, "CENTER_KE")
+    width = Cpt(EpicsSignal, "WIDTH", kind="config")
+    center_ke = Cpt(EpicsSignal, "CENTER_KE", kind="config")
     first_energy = Cpt(EpicsSignal, "FIRST_ENERGY")
     deflX = Cpt(EpicsSignal, "DEFLX")
     deflY = Cpt(EpicsSignal, "DEFLY")
     dbl10 = Cpt(EpicsSignal, "DBL10")
-    acq_mode = Cpt(EpicsSignal, "ACQ_MODE")
+    acq_mode = Cpt(EpicsSignal, "ACQ_MODE", string=True, kind="config")
     date_number = Cpt(EpicsSignal, "DATE_NUMBER")
     loc_det = Cpt(EpicsSignal, "LOC_DET")
     xtab = Cpt(EpicsSignal, "XTAB")
@@ -282,18 +331,18 @@ class SpectrumAnalyzer(Device, Readable):
     pc_mask = Cpt(EpicsSignal, "PC_MASK")
     soft_bin_x = Cpt(EpicsSignal, "SOFT_BIN_X")
     soft_bin_y = Cpt(EpicsSignal, "SOFT_BIN_Y")
-    escale_mult = Cpt(EpicsSignal, "ESCALE_MULT")
-    escale_max = Cpt(EpicsSignal, "ESCALE_MAX")
-    escale_min = Cpt(EpicsSignal, "ESCALE_MIN")
-    yscale_mult = Cpt(EpicsSignal, "YSCALE_MULT")
-    yscale_max = Cpt(EpicsSignal, "YSCALE_MAX")
-    yscale_min = Cpt(EpicsSignal, "YSCALE_MIN")
+    escale_mult = Cpt(EpicsSignal, "ESCALE_MULT", kind="config")
+    escale_max = Cpt(EpicsSignal, "ESCALE_MAX", kind="config")
+    escale_min = Cpt(EpicsSignal, "ESCALE_MIN", kind="config")
+    yscale_mult = Cpt(EpicsSignal, "YSCALE_MULT", kind="config")
+    yscale_max = Cpt(EpicsSignal, "YSCALE_MAX", kind="config")
+    yscale_min = Cpt(EpicsSignal, "YSCALE_MIN", kind="config")
     yscale_name = Cpt(EpicsSignal, "YSCALE_NAME")
-    xscale_mult = Cpt(EpicsSignal, "XSCALE_MULT")
-    xscale_max = Cpt(EpicsSignal, "XSCALE_MAX")
-    xscale_min = Cpt(EpicsSignal, "XSCALE_MIN")
+    xscale_mult = Cpt(EpicsSignal, "XSCALE_MULT", kind="config")
+    xscale_max = Cpt(EpicsSignal, "XSCALE_MAX", kind="config")
+    xscale_min = Cpt(EpicsSignal, "XSCALE_MIN", kind="config")
     xscale_name = Cpt(EpicsSignal, "XSCALE_NAME")
-    psu_mode = Cpt(EpicsSignal, "PSU_MODE")
+    psu_mode = Cpt(EpicsSignal, "PSU_MODE", kind="config")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
     over_range = Cpt(EpicsSignal, "OVER_RANGE")
 
@@ -308,6 +357,24 @@ class SpectrumAnalyzer(Device, Readable):
         self._last_emitted_index = 0
         self._composer = None
         self._full_path = None
+
+    @property
+    def writing_path(self) -> str:
+        if not self._full_path:
+            path = _convert_path_to_posix(Path(self.file_path.get()))
+            file_name = Path(self.file_name.get())
+            if not path:
+                date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+                sample_name = RE.md.get("sample_name", "no-sample")
+                if not re.fullmatch(r"^[\w-]+$", sample_name):
+                    raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
+                                      "Only characters, underscores, or dashes are valid.") 
+                path = _convert_path_to_posix(f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}")
+            if not file_name:
+                return str(path)
+            return str(path / file_name)
+
+        return self._full_path
 
     def stage(self):
         if self.file_capture.get(as_string=True) == "On":
@@ -339,19 +406,33 @@ class SpectrumAnalyzer(Device, Readable):
                 [(self.frames, self._min_frames)],
             )
 
+        # Rebase the path to the assets directory of the current cycle & data session
+        date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+        sample_name = RE.md.get("sample_name", "no-sample")
+        if not re.fullmatch(r"^[\w-]+$", sample_name):
+            raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
+                              "Only characters, underscores, or dashes are valid.") 
+        
+        full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}"
+        self.file_path.put(full_path, use_complete=True)
         path = _convert_path_to_posix(Path(self.file_path.get()))
-        file_name = Path(self.file_name.get())
-        self._full_path = str(path / file_name)
-        self._index = 0
-        self._last_emitted_index = 0
-
         # Subscribe to state and live max count exceeded to
         # handle the acquisition status
         self.state.subscribe(self._state_changed, run=False)
         self.live_max_count_exceeded.subscribe(
             self._live_max_count_exceeded_monitor, run=False
         )
-        return super().stage()
+
+        # Stage-sigs
+        ret = super().stage()
+
+        # Get actual file name
+        file_name = Path(self.file_name.get())
+        self._full_path = str(path / file_name)
+        self._index = 0
+        self._last_emitted_index = 0
+
+        return ret
 
     def _state_changed(self, value=None, old_value=None, **kwargs):
         if (
@@ -407,9 +488,9 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
     def _generate_resource(self):
         self._composer = compose_resource(
             spec="A1_HDF5",
-            root=str(Path(self._full_path).parent),
+            root="",
             resource_path=self._full_path,
-            resource_kwargs={"frame_per_point": 1},
+            resource_kwargs={"frame_per_point": 1, "dataset": "entry/instrument/analyzer/data"},
             path_semantics="posix",
         )
         self._asset_docs_cache.append(("resource", self._composer.resource_doc))
@@ -466,71 +547,24 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
 
 mbs = SpectrumAnalyzerFileStore("XF:21ID1-ES{A1Soft}", name="mbs")
 
-Diag1_CamH = MyDetector("XF:21IDA-BI{Diag:1-Cam:H}", name="Diag1_CamH")
-Diag1_CamH.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam01/"
-
-#Diag1_CamV = MyDetector("XF:21IDA-BI{Diag:1-Cam:V}", name="Diag1_CamV")
-#Diag1_CamV.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam02/"
-
-Lock23A_CamEA3_1 = MyDetector('XF:21IDD-BI{ES-Cam:3}', name='Lock23A_CamEA3_1')
-Lock23A_CamEA3_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam03/'
-
-#Lock23A_CamEA3_1 = MyDetector(
-#    "XF:21IDD-BI{Lock2:3A-Cam:EA3_1}", name="Lock23A_CamEA3_1"
-#)
-#Lock23A_CamEA3_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam03/"
-
-
-#Lock14A_CamEA4_1 = MyDetector(
-#    "XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", name="Lock14A_CamEA4_1"
-#)
-#Lock14A_CamEA4_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam04/"
-
-#Prep2A_CamEA2_1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", name="Prep2A_CamEA2_1")
-#Prep2A_CamEA2_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam05/"
-
-Mir3_Cam10_U_1 = MyDetector("XF:21IDB-BI{Mir:3-Cam:6}", name="Mir3_Cam10_U_1")
-Mir3_Cam10_U_1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam06/"
-
-
-# BC1_Diag1_U_1 = MyDetector('XF:21IDA-BI{BC:1-Diag:1_U_1}', name='BC1_Diag1_U_1')
-# BC1_Diag1_U_1.hdf5.write_path_template = '/nsls2/data/esm/legacy/image_files/cam07/'
-
-#Anal1A_Camlens = MyDetector("XF:21IDD-BI{Anal:1A-Cam:lens}", name="Anal1A_Camlens")
-#Anal1A_Camlens.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam07/"
-
-#Anal1A_Cambeam = MyDetector("XF:21IDD-BI{Anal:1A-Cam:beam}", name="Anal1A_Cambeam")
-#Anal1A_Cambeam.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam08/"
-
-Prep2A_CamLEED = MyDetector("XF:21IDD-BI{ES-Cam:9}", name="Prep2A_CamLEED")
-Prep2A_CamLEED.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam09/"
-
-Cam5 = MyDetector("XF:21IDD-BI{ES-Cam:5}", name="Cam5")
-Cam5.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam05/"
-
-#Prep2A_Camevap1 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap1}", name="Prep2A_Camevap1")
-#Prep2A_Camevap1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam10/"
-
-#Prep2A_Camevap2 = MyDetector("XF:21IDD-BI{Prep:2A-Cam:evap2}", name="Prep2A_Camevap2")
-#Prep2A_Camevap2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam11/"
-
-LOWT_5A_Cam1 = MyDetector("XF:21IDD-OP{ES-Cam:16}", name="LOWT_5A_Cam1")
-LOWT_5A_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam14/"
-
-#LOWT_5A_Cam2 = MyDetector("XF:21IDD-OP{LOWT:5A-Cam:2}", name="LOWT_5A_Cam2")
-#LOWT_5A_Cam2.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam15/"
-
-#BTA2_Cam1 = MyDetector("XF:21IDD-OP{BT:A2-Cam:1}", name="BTA2_Cam1")
-#BTA2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam16/"
-
-#BTB2_Cam1 = MyDetector("XF:21IDD-OP{BT:B2-Cam:1}", name="B2BT_Cam1")
-#BTB2_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam17/"
-
-#PEEM1B_Cam1 = MyDetector("XF:21IDD-OP{PEEM:1B-Cam:1}", name="PEEM1B_Cam1")
-#PEEM1B_Cam1.hdf5.write_path_template = "/nsls2/data/esm/legacy/image_files/cam18/"
-
-#BTB5_Cam1 = MyDetector("XF:21IDD-OP{BT:B5-Cam:1}", name="BTB5_Cam1")
-#BTB5_Cam1.hdf5.write_path_template = "/nsls2/xf21id/image_files/cam19/"
+Diag1_CamH = create_detector("XF:21IDA-BI{Diag:1-Cam:H}", "cam01", name="Diag1_CamH")
+# Diag1_CamV = create_detector("XF:21IDA-BI{Diag:1-Cam:V}", "cam02", name="Diag1_CamV")
+Lock23A_CamEA3_1 = create_detector("XF:21IDD-BI{ES-Cam:3}", "cam03", name="Lock23A_CamEA3_1")
+# Lock14A_CamEA4_1 = create_detector("XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", "cam04", name="Lock14A_CamEA4_1")
+# Prep2A_CamEA2_1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", "cam05", name="Prep2A_CamEA2_1")
+Mir3_Cam10_U_1 = create_detector("XF:21IDB-BI{Mir:3-Cam:6}", "cam06", name="Mir3_Cam10_U_1")
+# BC1_Diag1_U_1 = create_detector("XF:21IDA-BI{BC:1-Diag:1_U_1}", "cam07", name="BC1_Diag1_U_1")
+# Anal1A_Camlens = create_detector("XF:21IDD-BI{Anal:1A-Cam:lens}", "cam07", name="Anal1A_Camlens")
+# Anal1A_Cambeam = create_detector("XF:21IDD-BI{Anal:1A-Cam:beam}", "cam08", name="Anal1A_Cambeam")
+Prep2A_CamLEED = create_detector("XF:21IDD-BI{ES-Cam:9}", "cam09", name="Prep2A_CamLEED")
+# Prep2A_Camevap1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap1}", "cam10", name="Prep2A_Camevap1")
+# Prep2A_Camevap2 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap2}", "cam11", name="Prep2A_Camevap2")
+LOWT_5A_Cam1 = create_detector("XF:21IDD-OP{ES-Cam:16}", "cam14", name="LOWT_5A_Cam1")
+# LOWT_5A_Cam2 = create_detector("XF:21IDD-OP{LOWT:5A-Cam:2}", "cam15", name="LOWT_5A_Cam2")
+# BTA2_Cam1 = create_detector("XF:21IDD-OP{BT:A2-Cam:1}", "cam16", name="BTA2_Cam1")
+# BTB2_Cam1 = create_detector("XF:21IDD-OP{BT:B2-Cam:1}", "cam17", name="BTB2_Cam1")
+# PEEM1B_Cam1 = create_detector("XF:21IDD-OP{PEEM:1B-Cam:1}", "cam18", name="PEEM1B_Cam1")
+# BTB5_Cam1 = create_detector("XF:21IDD-OP{BT:B5-Cam:1}", "cam19", name="BTB5_Cam1")
 
 all_standard_pros = [
     Diag1_CamH,

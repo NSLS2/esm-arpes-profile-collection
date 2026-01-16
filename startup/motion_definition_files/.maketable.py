@@ -181,7 +181,7 @@ def fit_input_make_output(xe, yg, Epts = 1000, Emin = None, Emax = None, polydeg
     ax.plot(xe,out.residual,'g:',label = 'residual')
     ax.grid(True)
     ax.legend()
-    print(f'Report from Fit:\[n {out.fit_report(show_correl = False)}\n')
+    print(f'Report from Fit:\\[n {out.fit_report(show_correl = False)}\n')
     print(f'Created table data with {Epts} points and {(xnew[1]-xnew[0])*1000 :.2f} meV resolution.')
 
     return output
@@ -221,14 +221,14 @@ def set_EPUioc_table(file,  Epts=1000, ioc_table_num=None, write_to_ioc=False, E
     ax = fig.add_subplot(121)
     ax.plot(dE_x,dE_y*1000,'.',label = 'energy')
     ax.set_xlabel('Input Energy [eV]')
-    ax.set_ylabel('$\Delta$E [meV]')
+    ax.set_ylabel(r'$\Delta$E [meV]')
     #ax.set_ylim(np.min(dE_y), np.max(dE_y))
     ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
  
     ax = fig.add_subplot(122)
     ax.plot(dG_x, dG_y, label = 'gap')
     ax.set_xlabel('Input Gap [mm]')
-    ax.set_ylabel('$\Delta$G [mm]')
+    ax.set_ylabel(r'$\Delta$G [mm]')
 
     if write_to_ioc is False:
         print(f'\n\n\t\tJust testing. No data written to IOC for IOC table # {ioc_table_num} and EPU{EPUnum}')

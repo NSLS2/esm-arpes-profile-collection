@@ -17,6 +17,10 @@ class LEEMDetector(Device):
         # On a background thread, listen for the server's response.
 #        self.st = None
 
+    def stage(self):
+        self.filepath.set(f"{proposal_path()}/assets/leem/")
+        return super().stage()
+
     def trigger(self):
         init = 0
         status = DeviceStatus(self)
