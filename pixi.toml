@@ -29,6 +29,7 @@ p4p = ">=4.2.0,<5"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 bluesky-tiled-plugins = ">=2.0.0b68"
 nexusformat = ">=2.0.0,<3"
+pymoo = ">=0.6"  # pre-built from conda-forge, avoids PyPI source build failure
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
@@ -63,10 +64,10 @@ pvs = "ipython --profile-dir=. -c 'get_pv_types(); exit()'"
 
 [feature.test.dependencies]
 pytest = "*"
+ipython = ">=9.5.0"
 
 [feature.test.tasks]
 tests = "pytest tests"
-ipython = ">=9.5.0"
 
 [environments]
 terminal = {features=["profile", "terminal"], solve-group="profile"}
