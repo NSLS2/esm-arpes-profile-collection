@@ -12,7 +12,7 @@ class ElectrometerEvaluation:
 
         outcomes = []
         run = self._tiled_client[uid]
-        electrometer_current = run["primary/qem01_current1_mean_value"].read()
+        electrometer_current = run["primary/xqem01_current1_mean_value"].read()
         suggestion_ids = [suggestion["_id"] for suggestion in run.metadata["start"]["blop_suggestions"]]
         for idx, sid in enumerate(suggestion_ids):
             outcome = {
