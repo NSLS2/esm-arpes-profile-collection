@@ -6,8 +6,6 @@ esm_ui_old_config_file = "/home2/xf21id1/git/bsstudio-xf_old/21id/esm_usr2.ui"
 def update_gui():
     import os
     os.system("git -C /opt/bsstudio/bsstudio-xf pull")
-    os.system("git -C /home2/xf21id1/git/bsstudio pull")
-    #os.system("git -C /home2/xf21id1/git/bsstudio-xf pull")
 
 def esm_gui1(filename=esm_ui_config_file, detached=False, verbose=False):
     # Note: install it in the developer mode with the following command before
@@ -17,7 +15,6 @@ def esm_gui1(filename=esm_ui_config_file, detached=False, verbose=False):
     import os
     os.environ["BSSTUDIO_LOG_FILE_NAME"] = "/var/log/bsstudio/bsstudio.log"
     import sys
-    sys.path.append("/home2/xf21id1/git/bsstudio/")
     import bsstudio
     import warnings
     #warnings.simplefilter("ignore")
@@ -33,7 +30,6 @@ def old_gui():
 
 def gui_designer():
     import os
-    #os.system("/opt/bsstudio/gui_designer.sh")
     os.system("~/opt_bsstudio/gui_designer.sh")
 
 def bsstudio_profile_results():
