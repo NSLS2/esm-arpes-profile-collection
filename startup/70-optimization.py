@@ -1,64 +1,72 @@
 
 from blop import RangeDOF, Objective, Agent
 
-from .optimization.alignment import ElectrometerEvaluation
+from startup.optimization.alignment import ElectrometerEvaluation
 
 
 
 # QuadEM alignment optimization with M1 Mirror and Hexapod Mirrors
-sensors = [xqem01.current1]
+sensors = [xqem01]
 dofs = [
+    #RangeDOF(
+    #    actuator=M1.X,
+    #    bounds=(-4.0, -2.6),
+    #    #bounds=(-4.3, -4.2),
+    #    #step_size=0.1,
+    #    parameter_type="float",
+    #),
+    #RangeDOF(
+    #    actuator=M1.Ry,
+    #    bounds=(-3744.0, -3604.0),
+    #    #bounds=(-4674.0, -4673.0),
+    #    #step_size=1.0,
+    #    parameter_type="float",
+    #),
+    # RangeDOF(
+    #     actuator=M3.X,
+    #     bounds=(-0.5, 0.5),
+    #     #bounds=(0.4, 0.5),
+    #     #step_size=0.01,
+    #     parameter_type="float",
+    # ),
+    #RangeDOF(
+    #    actuator=M3.Y,
+    #    bounds=(13.5, 14.5),
+    #    #bounds=(14.0, 14.1),
+    #    #step_size=0.1,
+    #    parameter_type="float",
+    #),
     RangeDOF(
-        actuator=M1_mirror.X,
-        bounds=(-4.35, -2.35),
-        step_size=0.05,
-        parameter_type="float",
-    ),
-    RangeDOF(
-        actuator=M1_mirror.Ry,
-        bounds=(-4674, -2674),
-        step_size=1.0,
-        parameter_type="float",
-    ),
-    RangeDOF(
-        actuator=Hexapod_Mir.X,
+        actuator=M3.Z,
         bounds=(-0.5, 0.5),
-        step_size=0.01,
+        #bounds=(0.0, 0.1),
+        #step_size=0.1,
         parameter_type="float",
     ),
+    #RangeDOF(
+    #    actuator=M3.Rx,
+    #    bounds=(-0.5, 0.5),
+    #    #bounds=(0.0, 0.1),
+    #    #step_size=0.1,
+    #    parameter_type="float",
+    #),
     RangeDOF(
-        actuator=Hexapod_Mir.Y,
-        bounds=(13.0, 15.0),
-        step_size=0.1,
+        actuator=M3.Ry,
+        bounds=(-0.712, -0.709),
+        #bounds=(-0.7, -0.69),
+        #step_size=0.00005,
         parameter_type="float",
     ),
-    RangeDOF(
-        actuator=Hexapod_Mir.Z,
-        bounds=(-1.0, 1.0),
-        step_size=0.1,
-        parameter_type="float",
-    ),
-    RangeDOF(
-        actuator=Hexapod_Mir.Rx,
-        bounds=(-1.0, 1.0),
-        step_size=0.1,
-        parameter_type="float",
-    ),
-    RangeDOF(
-        actuator=Hexapod_Mir.Ry,
-        bounds=(-0.76, -0.66),
-        step_size=0.00005,
-        parameter_type="float",
-    ),
-    RangeDOF(
-        actuator=Hexapod_Mir.Rz,
-        bounds=(-1.0, 1.0),
-        step_size=0.01,
-        parameter_type="float",
-    ),
+    #RangeDOF(
+    #    actuator=M3.Rz,
+    #    bounds=(-0.5, 0.5),
+    #    #bounds=(0.0, 0.1),
+    #    #step_size=0.01,
+    #    parameter_type="float",
+    #),
 ]
 objectives = [
-    Objective("xqem01_current", minimize=False),
+    Objective(name="xqem01_current", minimize=False),
 ]
 
 # Simple EM alignment agent that uses the "fast" generation strategy
@@ -69,12 +77,12 @@ em_align_agent1 = Agent(
     objectives=objectives,
     evaluation_function=ElectrometerEvaluation(tiled_client=tiled_reading_client),
     checkpoint_path="/nsls2/data/esm/legacy/optimization/alignment/em_alignment.json",
-    client_kwargs={"name": "simple_em_alignment"},
+    name="simple_em_alignment",
 )
 em_align_agent1.ax_client.configure_generation_strategy(
     method="fast",
-    initialize_with_center=False,
-    allow_exceeding_initialization_budget=False,
+    initialize_with_center=True,
+    allow_exceeding_initialization_budget=True,
 )
 
 # Simple EM alignment agent that uses the "quality" generation strategy
@@ -85,9 +93,12 @@ em_align_agent2 = Agent(
     objectives=objectives,
     evaluation_function=ElectrometerEvaluation(tiled_client=tiled_reading_client),
     checkpoint_path="/nsls2/data/esm/legacy/optimization/alignment/em_alignment.json",
-    client_kwargs={"name": "simple_em_alignment"},
+    name="simple_em_alignment",
 )
 em_align_agent2.ax_client.configure_generation_strategy(
-    method="quality",
-    use_existing_trials_for_initialization=True,
+    method="fast",
+    initialization_budget=25,
+    initialize_with_center=True,
+    allow_exceeding_initialization_budget=True,
 )
+

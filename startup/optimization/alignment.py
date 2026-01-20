@@ -1,3 +1,5 @@
+import time as ttime
+import numpy as np
 from tiled.client.container import Container
 
 
@@ -5,10 +7,12 @@ class ElectrometerEvaluation:
     def __init__(self, tiled_client: Container) -> None:
         self._tiled_client = tiled_client
 
-    def electrometer_evaluation(self, uid: str, suggestions: list[dict]) -> list[dict]:
+    def __call__(self, uid: str, suggestions: list[dict]) -> list[dict]:
         """
         Read the electrometer current from Tiled.
         """
+
+        ttime.sleep(3.0)
 
         outcomes = []
         run = self._tiled_client[uid]
@@ -17,7 +21,7 @@ class ElectrometerEvaluation:
         for idx, sid in enumerate(suggestion_ids):
             outcome = {
                 "_id": sid,
-                "electrometer_current": electrometer_current[idx],
+                "xqem01_current": electrometer_current[idx],
             }
             outcomes.append(outcome)
 
