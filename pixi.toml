@@ -55,7 +55,7 @@ pyqt = ">=5.15.11,<6"
 pyqtgraph = ">=0.14.0,<0.15"
 
 [feature.terminal.pypi-dependencies]
-bsstudio = { git = "https://github.com/NSLS2/esm-bsstudio", rev = "master" }
+bsstudio = { git = "https://github.com/NSLS2/esm-bsstudio", rev = "thopkins32-patch-1" }
 
 [feature.terminal.tasks]
 start = "unset SESSION_MANAGER && MPLBACKEND=Qt5Agg ipython --profile-dir=."
