@@ -1010,7 +1010,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
       - pypi: https://files.pythonhosted.org/packages/5b/08/185c3b29b0698328b202e6c965c23187e2e29ead78cb468aab0a09ee97fc/aioca-1.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
-      - pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=thopkins32-patch-2#2b805c6687fbf1f4ccfba3d74b7b1174b3ce4ff3
       - pypi: https://files.pythonhosted.org/packages/56/6d/0d9848617b9f753b87f214f1c682592f7ca42de085f564352f10f0843026/ipywidgets-8.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl
       - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
@@ -1020,6 +1019,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/99/63/d30abf8b53c6ceaea2e7d8d766363a6a2e6a6b7f2238e3ae56e882a4dc21/redis_json_dict-0.2.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3f/0e/fa3b193432cfc60c93b42f3be03365f5f909d2b3ea410295cf36df739e31/widgetsnbextension-4.0.15-py3-none-any.whl
+      - pypi: /home2/xf21id1/git/bsstudio
   test:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -2414,10 +2414,12 @@ packages:
   purls: []
   size: 168501
   timestamp: 1761758949420
-- pypi: git+https://github.com/NSLS2/esm-bsstudio?rev=thopkins32-patch-2#2b805c6687fbf1f4ccfba3d74b7b1174b3ce4ff3
+- pypi: /home2/xf21id1/git/bsstudio
   name: bsstudio
   version: 1.0.1
+  sha256: 1b5ad3bcabac8e82631b2c563000638d3e116c1743e95981fabb439678dde292
   requires_python: '>=3.6'
+  editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/bzip2-1.0.8-hda65f42_8.conda
   sha256: c30daba32ddebbb7ded490f0e371eae90f51e72db620554089103b4a6934b0d5
   md5: 51a19bba1b8ebfb60df25cde030b7ebc

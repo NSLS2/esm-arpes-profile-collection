@@ -285,7 +285,7 @@ class SpectrumAnalyzer(Device, Readable):
     file_aggregate_precision = Cpt(EpicsSignal, "FILE:AGG_PRECISION", kind="config")
     num_captured = Cpt(EpicsSignalRO, "FILE:NUM_CAPTURED")
     num_processed = Cpt(EpicsSignalRO, "FILE:NUM_PROCESSED")
-    total_intensity = Cpt(EpicsSignalRO, "TOTAL_INTENSITY")
+    total_intensity = Cpt(EpicsSignalRO, "TOTAL_INTENSITY", kind="hinted")
 
     # Detector parameters
     state = Cpt(EpicsSignalRO, "STATE", string=True)
