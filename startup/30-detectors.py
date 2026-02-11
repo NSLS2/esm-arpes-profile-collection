@@ -364,7 +364,7 @@ class SpectrumAnalyzer(Device, Readable):
             path = _convert_path_to_posix(Path(self.file_path.get()))
             file_name = Path(self.file_name.get())
             if not path:
-                date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+                date_string = RE.md.get("sample_date", datetime.datetime.now().strftime("%Y_%m_%d"))
                 sample_name = RE.md.get("sample_name", "no-sample")
                 if not re.fullmatch(r"^[\w-]+$", sample_name):
                     raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
@@ -407,7 +407,7 @@ class SpectrumAnalyzer(Device, Readable):
             )
 
         # Rebase the path to the assets directory of the current cycle & data session
-        date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+        date_string = RE.md.get("sample_date", datetime.datetime.now().strftime("%Y_%m_%d"))
         sample_name = RE.md.get("sample_name", "no-sample")
         if not re.fullmatch(r"^[\w-]+$", sample_name):
             raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
