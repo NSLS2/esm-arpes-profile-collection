@@ -390,7 +390,7 @@ class SpectrumAnalyzer(Device, Readable):
 
         # Rebase the path to the assets directory of the current cycle & data session
         date_string = RE.md.get("sample_date", datetime.datetime.now().strftime("%Y_%m_%d"))
-        if not re.fullmatch(r"^[\w-/]+$", date_string):
+        if not re.fullmatch(r"^[\w/-]+$", date_string):
             raise ValueError(f"Date string is not valid as a path. Got: {date_string}. "
                                 "Only characters, underscores, forward slashes, or dashes are valid.")
         sample_name = RE.md.get("sample_name", "no-sample")
