@@ -68,6 +68,7 @@ nslsii.configure_base(get_ipython().user_ns,
                       redis_prefix="esm-arpes-",
                       redis_url="info.esm.nsls2.bnl.gov")
 
+
 # Set ipython startup dir variable (used in some modules):
 PROFILE_STARTUP_PATH = os.path.abspath(get_ipython().profile_dir.startup_dir)
 
