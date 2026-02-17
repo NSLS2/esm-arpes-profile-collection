@@ -358,24 +358,6 @@ class SpectrumAnalyzer(Device, Readable):
         self._composer = None
         self._full_path = None
 
-    @property
-    def writing_path(self) -> str:
-        if not self._full_path:
-            path = _convert_path_to_posix(Path(self.file_path.get()))
-            file_name = Path(self.file_name.get())
-            if not path:
-                date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
-                sample_name = RE.md.get("sample_name", "no-sample")
-                if not re.fullmatch(r"^[\w-]+$", sample_name):
-                    raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
-                                      "Only characters, underscores, or dashes are valid.") 
-                path = _convert_path_to_posix(f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}")
-            if not file_name:
-                return str(path)
-            return str(path / file_name)
-
-        return self._full_path
-
     def stage(self):
         if self.file_capture.get(as_string=True) == "On":
             raise RuntimeError(
@@ -407,7 +389,10 @@ class SpectrumAnalyzer(Device, Readable):
             )
 
         # Rebase the path to the assets directory of the current cycle & data session
-        date_string = datetime.datetime.now().strftime("%Y\\%m\\%d")
+        date_string = RE.md.get("sample_date", datetime.datetime.now().strftime("%Y_%m_%d"))
+        if not re.fullmatch(r"^[\w-/]+$", date_string):
+            raise ValueError(f"Date string is not valid as a path. Got: {date_string}. "
+                                "Only characters, underscores, forward slashes, or dashes are valid.")
         sample_name = RE.md.get("sample_name", "no-sample")
         if not re.fullmatch(r"^[\w-]+$", sample_name):
             raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
