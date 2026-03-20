@@ -133,9 +133,10 @@ except Exception as e:
 qem06 = ESMQuadEM("XF:21IDC-BI{EM:6}EM180:", name="qem06")
 
 try:
-	qem07 = ESMQuadEM("XF:21IDC-BI{EM:7}EM180:", name="qem07")
+	qem07 = ESMQuadEM("XF:21IDC-BI{EM:7}", name="qem07")
 except Exception as e:
 	print(e)
+
 qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
 
 
@@ -538,6 +539,9 @@ Lock23A_CamEA3_1 = create_detector("XF:21IDD-BI{ES-Cam:3}", "cam03", name="Lock2
 # Lock14A_CamEA4_1 = create_detector("XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", "cam04", name="Lock14A_CamEA4_1")
 # Prep2A_CamEA2_1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", "cam05", name="Prep2A_CamEA2_1")
 Mir3_Cam10_U_1 = create_detector("XF:21IDB-BI{Mir:3-Cam:6}", "cam06", name="Mir3_Cam10_U_1")
+Cam5 = create_detector("XF:21IDD-BI{ES-Cam:5}", "cam05", name="Cam5")
+
+
 # BC1_Diag1_U_1 = create_detector("XF:21IDA-BI{BC:1-Diag:1_U_1}", "cam07", name="BC1_Diag1_U_1")
 # Anal1A_Camlens = create_detector("XF:21IDD-BI{Anal:1A-Cam:lens}", "cam07", name="Anal1A_Camlens")
 # Anal1A_Cambeam = create_detector("XF:21IDD-BI{Anal:1A-Cam:beam}", "cam08", name="Anal1A_Cambeam")
@@ -558,6 +562,7 @@ all_standard_pros = [
 #    Lock14A_CamEA4_1,
 #    Prep2A_CamEA2_1,
     Mir3_Cam10_U_1,
+    Cam5,
 #    Anal1A_Camlens,
 #    Anal1A_Cambeam,
     Prep2A_CamLEED,
