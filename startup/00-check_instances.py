@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 
-cmd = "ps aux | grep -i '[p]ixi run' | grep -i 'collection' | grep -i 'start' | wc -l"
+cmd = "ps aux | grep -i '[p]ixi run' | grep -i 'collection' | grep -i '-e terminal ipython' | wc -l"
 max_instances = 5
 result = subprocess.run(
     cmd,
