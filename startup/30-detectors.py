@@ -345,7 +345,7 @@ class SpectrumAnalyzer(Device, Readable):
     xscale_name = Cpt(EpicsSignal, "XSCALE_NAME")
     psu_mode = Cpt(EpicsSignal, "PSU_MODE", kind="config")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
-    over_range = Cpt(EpicsSignal, "OVER_RANGE")
+    #over_range = Cpt(EpicsSignal, "OVER_RANGE")
 
 
     _min_frames = 100
