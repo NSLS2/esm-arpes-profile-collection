@@ -260,7 +260,7 @@ def _convert_path_to_posix(path: Path) -> Path:
     
     # Replace Y: with the target directory
     if path_str.startswith("Y:"):
-        path_str = path_str.replace("Y:", "/nsls2/data3/esm/proposals", 1)
+        path_str = path_str.replace("Y:", "/nsls2/data/esm/proposals", 1)
     else:
         return path
     
