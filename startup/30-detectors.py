@@ -116,30 +116,40 @@ class ESMbpm(ESMQuadEM):
     conf = Cpt(QuadEMPort, port_name="NSLS2_EM")
 
 
-qem01 = ESMQuadEM("XF:21IDA-BI{EM:1}EM180:", name="qem01")
-qem02 = ESMQuadEM("XF:21IDB-BI{EM:2}EM180:", name="qem02")
 try:
-	qem03 = ESMQuadEM("XF:21IDB-BI{EM:3}EM180:", name="qem03")
+    qem01 = ESMQuadEM("XF:21IDA-BI{EM:1}EM180:", name="qem01")
 except Exception as e:
-	print(e)
+    print(e)
 try:
-	qem04 = ESMQuadEM("XF:21IDB-BI{EM:4}EM180:", name="qem04")
+    qem02 = ESMQuadEM("XF:21IDB-BI{EM:2}EM180:", name="qem02")
 except Exception as e:
-	print(e)
+    print(e)
 try:
-	qem05 = ESMQuadEM("XF:21IDB-BI{EM:5}EM180:", name="qem05")
+    qem03 = ESMQuadEM("XF:21IDB-BI{EM:3}EM180:", name="qem03")
 except Exception as e:
-	print(e)
-qem06 = ESMQuadEM("XF:21IDC-BI{EM:6}EM180:", name="qem06")
+    print(e)
+try:
+    qem04 = ESMQuadEM("XF:21IDB-BI{EM:4}EM180:", name="qem04")
+except Exception as e:
+    print(e)
+try:
+    qem05 = ESMQuadEM("XF:21IDB-BI{EM:5}EM180:", name="qem05")
+except Exception as e:
+    print(e)
+try:
+    qem06 = ESMQuadEM("XF:21IDC-BI{EM:6}EM180:", name="qem06")
+except Exception as e:
+    print(e)
 
 try:
-	qem07 = ESMQuadEM("XF:21IDC-BI{EM:7}", name="qem07")
+    qem07 = ESMQuadEM("XF:21IDC-BI{EM:7}", name="qem07")
 except Exception as e:
-	print(e)
+    print(e)
 
-qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
-
-
+try:
+    qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
+except Exception as e:
+    print(e)
 
 # qem09 not connected as of May 24, 2018
 #qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
@@ -147,10 +157,14 @@ qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
 # qem11 not connected as of May 24, 2018
 # qem11 = ESMQuadEM('XF:21IDC-BI{EM:11}EM180:', name='qem11')
 
-
-
-qem12 = ESMQuadEM("XF:21IDC-BI{EM:12}EM180:", name="qem12")
-qem13 = ESMQuadEM("XF:21IDC-BI{EM:13}EM180:", name="qem13")
+try:
+    qem12 = ESMQuadEM("XF:21IDC-BI{EM:12}EM180:", name="qem12")
+except Exception as e:
+    print(e)
+try:
+    qem13 = ESMQuadEM("XF:21IDC-BI{EM:13}EM180:", name="qem13")
+except Exception as e:
+    print(e)
 #qem15 = ESMQuadEM("XF:21IDC-BI{EM:15}EM180:", name="qem15")
 #qem16 = ESMQuadEM("XF:21IDC-BI{EM:16}EM180:", name="qem16")
 
@@ -346,6 +360,8 @@ class SpectrumAnalyzer(Device, Readable):
     psu_mode = Cpt(EpicsSignal, "PSU_MODE", kind="config")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
     #over_range = Cpt(EpicsSignal, "OVER_RANGE")
+    slit_no = Cpt(EpicsSignal, "SLIT_NO", kind="config")
+    connection_type = Cpt(EpicsSignal, "CONNECTION", kind="config")
 
 
     _min_frames = 100
