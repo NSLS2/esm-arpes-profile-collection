@@ -12,6 +12,8 @@ from tiled.client import from_profile, from_uri
 from databroker import Broker
 
 
+os.environ["MPLBACKEND"] = "Qt5Agg"
+
 def sync_experiment(proposals):
     sync_exp(proposal_ids=proposals)
     if not (tiled_reading_api_key := apikey_redis_client.get("esm-arpes-apikey-active")):
