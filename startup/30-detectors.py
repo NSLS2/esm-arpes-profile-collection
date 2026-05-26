@@ -461,7 +461,10 @@ class SpectrumAnalyzer(Device, Readable):
                 "This detector is not ready to trigger."
                 "Call the stage() method before triggering."
             )
-
+        if self.acq_mode.get(as_string=True) != "Fixed":
+            wait_time = 0.5
+            print(f"Waiting {wait_time}s parameters to settle...")
+            ttime.sleep(wait_time)
         self._status = Status()
         self.acquire.put(1)
         return self._status
