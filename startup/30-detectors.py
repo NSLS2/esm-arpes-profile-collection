@@ -35,13 +35,10 @@ from ophyd.areadetector import (
     ProcessPlugin,
     TransformPlugin,
 )
-from ophyd.areadetector.plugins import (
-    ImagePlugin_V33,
-    StatsPlugin_V33
-)
+from ophyd.areadetector.plugins import ImagePlugin_V33, StatsPlugin_V33
+
 
 class HDF5PluginWithFileStore(HDF5Plugin, FileStoreHDF5IterativeWrite):
-
     def get_frames_per_point(self):
         # return self.num_capture.get()
         return 1
@@ -56,7 +53,9 @@ class HDF5PluginWithFileStore(HDF5Plugin, FileStoreHDF5IterativeWrite):
                 if not resource_path.startswith(root):
                     item[1]["resource_path"] = os.path.join(root, resource_path)
                 item[1]["root"] = ""
-                item[1]["resource_kwargs"].update({"dataset": "entry/instrument/detector/data"})
+                item[1]["resource_kwargs"].update(
+                    {"dataset": "entry/instrument/detector/data"}
+                )
             yield item
 
     # AD v2.2.0 (at least) does not have this. It is present in v1.9.1.
@@ -80,13 +79,13 @@ class ESMQuadEM(QuadEM):
     conf = Cpt(QuadEMPort, port_name="NSLS_EM")
     em_range = Cpt(EpicsSignalWithRBV, "Range", string=True)
 
-    image = Cpt(ImagePlugin_V33, 'image1:')
-    current1 = Cpt(StatsPlugin_V33, 'Current1:')
-    current2 = Cpt(StatsPlugin_V33, 'Current2:')
-    current3 = Cpt(StatsPlugin_V33, 'Current3:')
-    current4 = Cpt(StatsPlugin_V33, 'Current4:')
+    image = Cpt(ImagePlugin_V33, "image1:")
+    current1 = Cpt(StatsPlugin_V33, "Current1:")
+    current2 = Cpt(StatsPlugin_V33, "Current2:")
+    current3 = Cpt(StatsPlugin_V33, "Current3:")
+    current4 = Cpt(StatsPlugin_V33, "Current4:")
 
-    sum_all = Cpt(StatsPlugin_V33, 'SumAll:')
+    sum_all = Cpt(StatsPlugin_V33, "SumAll:")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -152,7 +151,7 @@ except Exception as e:
     print(e)
 
 # qem09 not connected as of May 24, 2018
-#qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
+# qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
 ##qem10 = ESMQuadEM("XF:21IDC-BI{EM:10}EM180:", name="qem10")
 # qem11 not connected as of May 24, 2018
 # qem11 = ESMQuadEM('XF:21IDC-BI{EM:11}EM180:', name='qem11')
@@ -165,8 +164,8 @@ try:
     qem13 = ESMQuadEM("XF:21IDC-BI{EM:13}EM180:", name="qem13")
 except Exception as e:
     print(e)
-#qem15 = ESMQuadEM("XF:21IDC-BI{EM:15}EM180:", name="qem15")
-#qem16 = ESMQuadEM("XF:21IDC-BI{EM:16}EM180:", name="qem16")
+# qem15 = ESMQuadEM("XF:21IDC-BI{EM:15}EM180:", name="qem15")
+# qem16 = ESMQuadEM("XF:21IDC-BI{EM:16}EM180:", name="qem16")
 
 xqem01 = ESMbpm("XF:21IDA-BI{EM:BPM01}", name="xqem01")
 
@@ -200,46 +199,48 @@ class MyDetector(SingleTrigger, AreaDetector):
 
     def stage(self):
         self.hdf5.write_path_template = self.hdf5.write_path_template.format(
-            cycle=RE.md["cycle"],
-            data_session=RE.md["data_session"]
+            cycle=RE.md["cycle"], data_session=RE.md["data_session"]
         )
         # FIXME: private member access
         if self.hdf5._read_path_template is not None:
             self.hdf5.read_path_template = self.hdf5.read_path_template.format(
-                cycle=RE.md["cycle"],
-                data_session=RE.md["data_session"]
+                cycle=RE.md["cycle"], data_session=RE.md["data_session"]
             )
         return super().stage()
 
     def describe(self):
         ret = super().describe()
-        ret[f"{self.name}_image"]["dtype_numpy"] = numpy.dtype(self.cam.data_type.get(as_string=True).lower()).str
+        ret[f"{self.name}_image"]["dtype_numpy"] = numpy.dtype(
+            self.cam.data_type.get(as_string=True).lower()
+        ).str
         return ret
 
     def set_primary(self, n, value=None):
         if "All" in n:
             for channel in range(1, 5):
-                stats = getattr(self, f'stats{channel}')
+                stats = getattr(self, f"stats{channel}")
                 stats.kind |= Kind.normal
-                stats.total.kind = 'hinted'
-                stats.min_value.kind = 'hinted'
-                stats.max_value.kind = 'hinted'
+                stats.total.kind = "hinted"
+                stats.min_value.kind = "hinted"
+                stats.max_value.kind = "hinted"
             return
 
         if value is None:
-            value = [['total']] * len(n)
+            value = [["total"]] * len(n)
 
         if len(value) != len(n):
-            raise ValueError(f'The length of "n" list ({len(n)}) must be equal to'
-                             'the length of "value" list ({len{value}})')
+            raise ValueError(
+                f'The length of "n" list ({len(n)}) must be equal to'
+                'the length of "value" list ({len{value}})'
+            )
 
         for value_list, channel in zip(value, n):
-            stats = getattr(self, f'stats{channel}')
+            stats = getattr(self, f"stats{channel}")
             stats.kind |= Kind.normal
             for val in value_list:
                 if val in ["max", "min"]:
                     val = f"{val}_value"
-                    getattr(stats, val).kind = 'hinted'
+                    getattr(stats, val).kind = "hinted"
 
 
 def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwargs):
@@ -250,6 +251,7 @@ def create_detector(prefix, write_path_suffix, template_suffix="%Y/%m/%d", **kwa
             write_path_template=f"{proposal_path_template()}/assets/{write_path_suffix}/{template_suffix}",
             root="/nsls2/data/esm/proposals",
         )
+
     return MyDetectorSubclass(prefix, **kwargs)
 
 
@@ -257,16 +259,16 @@ def _convert_path_to_posix(path: Path) -> Path:
     """Assumes that the path is on a Windows machine with Y: drive."""
     # Convert to string to manipulate
     path_str = str(path)
-    
+
     # Replace Y: with the target directory
     if path_str.startswith("Y:"):
         path_str = path_str.replace("Y:", "/nsls2/data/esm/proposals", 1)
     else:
         return path
-    
+
     # Convert backslashes to forward slashes for POSIX compatibility
     path_str = path_str.replace("\\", "/")
-    
+
     return Path(path_str)
 
 
@@ -359,10 +361,9 @@ class SpectrumAnalyzer(Device, Readable):
     xscale_name = Cpt(EpicsSignal, "XSCALE_NAME")
     psu_mode = Cpt(EpicsSignal, "PSU_MODE", kind="config")
     over_r_arr = Cpt(EpicsSignal, "OVER_R_ARR")
-    #over_range = Cpt(EpicsSignal, "OVER_RANGE")
+    # over_range = Cpt(EpicsSignal, "OVER_RANGE")
     slit_no = Cpt(EpicsSignal, "SLIT_NO", kind="config")
     connection_type = Cpt(EpicsSignal, "CONNECTION", kind="config")
-
 
     _min_frames = 100
     """TCP server can't keep up with frame rate faster than this value in non-swept mode"""
@@ -406,15 +407,21 @@ class SpectrumAnalyzer(Device, Readable):
             )
 
         # Rebase the path to the assets directory of the current cycle & data session
-        date_string = RE.md.get("sample_date", datetime.datetime.now().strftime("%Y_%m_%d"))
+        date_string = RE.md.get(
+            "sample_date", datetime.datetime.now().strftime("%Y_%m_%d")
+        )
         if not re.fullmatch(r"^[\w/-]+$", date_string):
-            raise ValueError(f"Date string is not valid as a path. Got: {date_string}. "
-                                "Only characters, underscores, forward slashes, or dashes are valid.")
+            raise ValueError(
+                f"Date string is not valid as a path. Got: {date_string}. "
+                "Only characters, underscores, forward slashes, or dashes are valid."
+            )
         sample_name = RE.md.get("sample_name", "no-sample")
         if not re.fullmatch(r"^[\w-]+$", sample_name):
-            raise ValueError(f"Sample name is not valid as a directory. Got: {sample_name}. "
-                              "Only characters, underscores, or dashes are valid.") 
-        
+            raise ValueError(
+                f"Sample name is not valid as a directory. Got: {sample_name}. "
+                "Only characters, underscores, or dashes are valid."
+            )
+
         full_path = f"Y:\\{RE.md['cycle']}\\{RE.md['data_session']}\\assets\\mbs\\{date_string}\\{sample_name}"
         self.file_path.put(full_path, use_complete=True)
         path = _convert_path_to_posix(Path(self.file_path.get()))
@@ -495,7 +502,10 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
             spec="A1_HDF5",
             root="",
             resource_path=self._full_path,
-            resource_kwargs={"frame_per_point": 1, "dataset": "entry/instrument/analyzer/data"},
+            resource_kwargs={
+                "frame_per_point": 1,
+                "dataset": "entry/instrument/analyzer/data",
+            },
             path_semantics="posix",
         )
         self._asset_docs_cache.append(("resource", self._composer.resource_doc))
@@ -508,7 +518,8 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
         self._asset_docs_cache.append(("datum", datum))
 
     def stage(self):
-        self._datum_uids = []
+        self._asset_docs_cache.clear()
+        self._datum_uids.clear()
         ret = super().stage()
         self._generate_resource()
         self._point_counter = ccount()
@@ -520,6 +531,8 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
         return s
 
     def unstage(self):
+        self._asset_docs_cache.clear()
+        self._datum_uids.clear()
         self._point_counter = None
         return super().unstage()
 
@@ -546,25 +559,30 @@ class SpectrumAnalyzerFileStore(SpectrumAnalyzer, WritesExternalAssets):
     def collect_asset_docs(self) -> SyncOrAsyncIterator[Asset]:
         items = list(self._asset_docs_cache)
         self._asset_docs_cache = []
-        for item in items:
-            yield item
+        yield from items
 
 
 mbs = SpectrumAnalyzerFileStore("XF:21ID1-ES{A1Soft}", name="mbs")
 
 Diag1_CamH = create_detector("XF:21IDA-BI{Diag:1-Cam:H}", "cam01", name="Diag1_CamH")
 # Diag1_CamV = create_detector("XF:21IDA-BI{Diag:1-Cam:V}", "cam02", name="Diag1_CamV")
-Lock23A_CamEA3_1 = create_detector("XF:21IDD-BI{ES-Cam:3}", "cam03", name="Lock23A_CamEA3_1")
+Lock23A_CamEA3_1 = create_detector(
+    "XF:21IDD-BI{ES-Cam:3}", "cam03", name="Lock23A_CamEA3_1"
+)
 # Lock14A_CamEA4_1 = create_detector("XF:21IDD-BI{Lock1:4A-Cam:EA4_1}", "cam04", name="Lock14A_CamEA4_1")
 # Prep2A_CamEA2_1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:EA2_1}", "cam05", name="Prep2A_CamEA2_1")
-Mir3_Cam10_U_1 = create_detector("XF:21IDB-BI{Mir:3-Cam:6}", "cam06", name="Mir3_Cam10_U_1")
+Mir3_Cam10_U_1 = create_detector(
+    "XF:21IDB-BI{Mir:3-Cam:6}", "cam06", name="Mir3_Cam10_U_1"
+)
 Cam5 = create_detector("XF:21IDD-BI{ES-Cam:5}", "cam05", name="Cam5")
 
 
 # BC1_Diag1_U_1 = create_detector("XF:21IDA-BI{BC:1-Diag:1_U_1}", "cam07", name="BC1_Diag1_U_1")
 # Anal1A_Camlens = create_detector("XF:21IDD-BI{Anal:1A-Cam:lens}", "cam07", name="Anal1A_Camlens")
 # Anal1A_Cambeam = create_detector("XF:21IDD-BI{Anal:1A-Cam:beam}", "cam08", name="Anal1A_Cambeam")
-Prep2A_CamLEED = create_detector("XF:21IDD-BI{ES-Cam:9}", "cam09", name="Prep2A_CamLEED")
+Prep2A_CamLEED = create_detector(
+    "XF:21IDD-BI{ES-Cam:9}", "cam09", name="Prep2A_CamLEED"
+)
 # Prep2A_Camevap1 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap1}", "cam10", name="Prep2A_Camevap1")
 # Prep2A_Camevap2 = create_detector("XF:21IDD-BI{Prep:2A-Cam:evap2}", "cam11", name="Prep2A_Camevap2")
 LOWT_5A_Cam1 = create_detector("XF:21IDD-OP{ES-Cam:16}", "cam14", name="LOWT_5A_Cam1")
@@ -576,23 +594,23 @@ LOWT_5A_Cam1 = create_detector("XF:21IDD-OP{ES-Cam:16}", "cam14", name="LOWT_5A_
 
 all_standard_pros = [
     Diag1_CamH,
-#    Diag1_CamV,
-#    Lock23A_CamEA3_1,
-#    Lock14A_CamEA4_1,
-#    Prep2A_CamEA2_1,
+    #    Diag1_CamV,
+    #    Lock23A_CamEA3_1,
+    #    Lock14A_CamEA4_1,
+    #    Prep2A_CamEA2_1,
     Mir3_Cam10_U_1,
     Cam5,
-#    Anal1A_Camlens,
-#    Anal1A_Cambeam,
+    #    Anal1A_Camlens,
+    #    Anal1A_Cambeam,
     Prep2A_CamLEED,
-#    Prep2A_Camevap1,
-#    Prep2A_Camevap2,
+    #    Prep2A_Camevap1,
+    #    Prep2A_Camevap2,
     LOWT_5A_Cam1,
-#    LOWT_5A_Cam2,
-#    BTA2_Cam1,
-#    BTB2_Cam1,
-#    PEEM1B_Cam1,
-#    BTB5_Cam1,
+    #    LOWT_5A_Cam2,
+    #    BTA2_Cam1,
+    #    BTB2_Cam1,
+    #    PEEM1B_Cam1,
+    #    BTB5_Cam1,
 ]
 
 for camera in all_standard_pros:
@@ -610,9 +628,8 @@ for camera in all_standard_pros:
     camera.set_primary(["All"])
 
 
-
-
 class flowmeter(Device):
-	value = Cpt(EpicsSignal, 'XF:21ID1-ES{IOLogik:1}AI:1-I')
+    value = Cpt(EpicsSignal, "XF:21ID1-ES{IOLogik:1}AI:1-I")
 
-flowm = flowmeter(name='flowm')
+
+flowm = flowmeter(name="flowm")
