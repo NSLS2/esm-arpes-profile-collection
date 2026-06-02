@@ -112,126 +112,29 @@ if widgetValue(ui().ckb_RE):
 
 #		if widgetValue(ui().ckb_M3_adj) and indx > 0 :      #adjust M3 on the go (if it is not the starting energy) 
 		if widgetValue(ui().ckb_M3_adj) :      #adjust M3 on the go 
-			M3_Ry = eval('M3.Ry.user_readback.get()')
-			RE(mv(M3.Ry, M3_Ry - 2*0.00005))
-			RE(mv(M3.Ry, M3_Ry +2*0.00005))   # to establish that it always start arriving from the positive direction, for backslash issues
-			sleep(3)
-			M3_Ry_0 = eval('M3.Ry.user_readback.get()')
-			print(eval('M3.Ry.user_readback.get()'))
-			M3_Ry = M3_Ry_0
-			RE(mv(M4AUdiag.trans, -6))
-			Au0_values, Au0_avg, Au0_sigma,  =np.array([0.0]*10), 0.0, 0.0
-			Au1_values, Au1_avg, Au1_sigma,  =np.array([0.0]*10), 0.0, 0.0
-
-			for i in range(10):
-				time.sleep(0.1)
-				Au0_values[i] = qem08.current1.mean_value.get()
-				#print(qem08.current1.mean_value.get())
-				#print(Au0_values[i])
-			Au0_avg, Au0_std = np.mean(Au0_values), np.std(Au0_values)
-			
-			
-			
-			M3_Ry = M3_Ry + 0.00005
-			RE(mv(M3.Ry, M3_Ry))
-			sleep(3)
-			print(eval('M3.Ry.user_readback.get()'))
-			for i in range(10):
-				time.sleep(0.1)
-				Au1_values[i] = qem08.current1.mean_value.get()
-			Au1_avg, Au1_std = np.mean(Au1_values), np.std(Au1_values)
-			
-
-			dir_found = False
-			max_found = False
-			insignificant_step = 0
-
-			while not dir_found:       #loop to determine direction
-				print( 'av0 = {}, av1 = {}, diff = {}'.format(Au0_avg, Au1_avg, (Au1_avg-Au0_avg) ))
-				if abs((Au1_avg-Au0_avg)) > (Au0_std+Au1_std)/2:   # significant change 
-					if (Au1_avg-Au0_avg) >0 :     
-						direction = +1.0
-					else :
-						direction = -1.0
-					dir_found = True
-					
-				else:  # not significant step 
-					M3_Ry = M3_Ry + 0.00005
-					sleep(3)
-					RE(mv(M3.Ry, M3_Ry))
-					print(eval('M3.Ry.user_readback.get()'))
-					Au0_avg, Au0_std = Au1_avg, Au1_std 
-					for i in range(10):
-						time.sleep(0.1)
-						Au1_values[i] = qem08.current1.mean_value.get()
-					Au1_avg, Au1_std = np.mean(Au1_values), np.std(Au1_values)
-					insignificant_step +=1
-					print('one more insignificant step during direction search, tot: ', insignificant_step)
-
-				if insignificant_step == 5:
-					RE(mv(M3.Ry, M3_Ry_0))
-					print('could not adjust M3')
-					dir_found = True
-					max_found = True
-					#return
-			
-
-			print('determined direction: ', direction)				
-			insignificant_step = 0
-
-			for i in range(10):
-				time.sleep(0.1)
-				Au1_values[i] = qem08.current1.mean_value.get()
-			Au0_avg, Au0_std = np.mean(Au1_values), np.std(Au1_values)
-			
-				# now that dir of increase is known, move one time in that direction
-			if direction == 1.0:
-				M3_Ry = M3_Ry +direction* 0.00005
-			else:
-				M3_Ry = M3_Ry +2*direction* 0.00005
-			RE(mv(M3.Ry, M3_Ry))
-			sleep(3)
-			print(eval('M3.Ry.user_readback.get()'))
-
-#			Au0_avg, Au0_std = Au1_avg, Au1_std 
-			for i in range(10):
-				time.sleep(0.1)
-				Au1_values[i] = qem08.current1.mean_value.get()
-			Au1_avg, Au1_std = np.mean(Au1_values), np.std(Au1_values)
-			print("extra step in the direction of increased signal")
-			print( 'av1 = {}, av0 = {}, diff = {}'.format(Au1_avg, Au0_avg, (Au1_avg-Au0_avg) ))
-			while not max_found:
-				if abs((Au1_avg-Au0_avg)) > (Au0_std+Au1_std)/2:      # significant change  
-					print( 'av1 = {}, av0 = {}, diff = {}'.format(Au1_avg, Au0_avg, (Au1_avg-Au0_avg) ))			
-					if (Au1_avg-Au0_avg) >0:  #same direction
-						print('significant, positive step, continue')
-						M3_Ry = M3_Ry +direction* 0.00005
-						RE(mv(M3.Ry, M3_Ry))
-						sleep(3)
-						Au0_avg, Au0_std = Au1_avg, Au1_std 
-						for i in range(10):
-							time.sleep(0.1)
-							Au1_values[i] = qem08.current1.mean_value.get()
-						Au1_avg, Au1_std = np.mean(Au1_values), np.std(Au1_values)
-					else:
-						print('significant, negative step, reached max: step back')
-						max_found = True
-						M3_Ry = M3_Ry -direction* 0.00005
-						RE(mv(M3.Ry, M3_Ry))
-				else:
-					print('insignificant, do nothing, go out')
-					max_found = True
-		
-			# after while-loop, pull out the diagnostic			
-			RE(mv(M4AUdiag.trans, 2))
-
-
-
-
-				#log file
-			with open('/home2/xf21id1/hv_log.csv', mode='a') as f:
-				csv_writer = csv.writer(f, delimiter=',')
-				csv_writer.writerow([ eng, eval('{:.2f}'.format(PGM.Energy.position)), eval('{:.2f}'.format(PGM.Focus_Const.position)),  Au1_avg, eval('{:.5f}'.format(M3.Ry.user_readback.get()))])			
+			# Bluesky plan refactor of the legacy hill-climb (was lines
+			# 113-226 of this file). See startup/m3_adjust_plan.py for
+			# the implementation and tests/test_m3_adjust.py for the
+			# behavioral contract.
+			#
+			# TODO: revisit return-value plumbing. RunEngine.__call__
+			# returns the tuple of run-start UIDs, not the plan's
+			# ``return`` value, so the ``(pos, au)`` returned by
+			# ``m3_adjust`` is not accessible here. For now we recover
+			# ``Au1_avg`` with a single post-hoc read of the detector
+			# (the plan leaves the mirror at the peak). When we wire a
+			# proper side-channel (caller-supplied result dict or
+			# wrapper helper), replace this with that mechanism.
+			RE(m3_adjust(
+				mirror=M3.Ry,
+				signal=qem08.current1.mean_value,
+				diag=M4AUdiag.trans,
+				csv_path='/home2/xf21id1/hv_log.csv',
+				eng=eng,
+				pgm_energy=PGM.Energy.position,
+				pgm_focus=PGM.Focus_Const.position,
+			))
+			Au1_avg = qem08.current1.mean_value.get()
 
 		if widgetValue(ui().ckb_hv_ls) and indx >0:			
 			c = center +float(en_ls[indx])-float(en_ls[0])
