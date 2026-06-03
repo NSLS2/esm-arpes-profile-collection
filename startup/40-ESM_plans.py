@@ -6,10 +6,21 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
-from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
+from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral, scan_nd
 from bluesky.plan_stubs import abs_set, mv, caching_repeater, unstage_all
-from bluesky.preprocessors import baseline_decorator, subs_decorator, run_decorator, stub_wrapper, plan_mutator, finalize_wrapper
+from bluesky.preprocessors import (
+    baseline_decorator,
+    subs_decorator,
+    run_decorator,
+    stub_wrapper,
+    plan_mutator,
+    finalize_wrapper,
+)
 from bluesky.utils import plan, make_decorator, root_ancestor, Msg
+import bluesky.plan_stubs as bps
+import bluesky.plans as bp
+import bluesky.preprocessors as bpp
+
 # from bluesky.callbacks import LiveTable, LivePlot, CallbackBase
 ###from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -19,8 +30,9 @@ import math
 import re
 from boltons.iterutils import chunked
 
+
 # ================================================================================================================
-# TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1976 
+# TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1976
 # ================================================================================================================
 def fixed_lazily_stage_wrapper(plan):
     """
@@ -72,7 +84,10 @@ def fixed_lazily_stage_wrapper(plan):
 
     return (yield from finalize_wrapper(plan_mutator(plan, inner), inner_unstage_all()))
 
+
 fixed_lazily_stage_decorator = make_decorator(fixed_lazily_stage_wrapper)
+
+
 # ================================================================================================================
 # ================================================================================================================
 # TODO: Remove if this PR is merged and released: https://github.com/bluesky/bluesky/pull/1974
@@ -109,9 +124,15 @@ def single_run_repeat_wrapper(plan, num_repeats=1, md=None):
     @fixed_lazily_stage_decorator()
     @run_decorator(md=_md)
     def inner():
-        return (yield from caching_repeater(num_repeats, stub_wrapper(msg for msg in cached_plan)))
+        return (
+            yield from caching_repeater(
+                num_repeats, stub_wrapper(msg for msg in cached_plan)
+            )
+        )
 
     return (yield from inner())
+
+
 # ================================================================================================================
 
 
@@ -137,7 +158,11 @@ def repeat_scan(*args, num_repeats=1, md=None, **kwargs):
     uid : str
         The unique identifier of the run.
     """
-    return (yield from single_run_repeat_wrapper(scan(*args, **kwargs), num_repeats=num_repeats, md=md))
+    return (
+        yield from single_run_repeat_wrapper(
+            scan(*args, **kwargs), num_repeats=num_repeats, md=md
+        )
+    )
 
 
 ###COLLECTING DATA
@@ -176,14 +201,13 @@ def repeat_scan(*args, num_repeats=1, md=None, **kwargs):
 ###                   Analyzers, cameras, pico-ammeters, currents, pressures, temperatures, etc.
 
 
-
 ###
 ###TIME SCANS
 ###These scans are used to scan over time.
 
 
-def scan_time(DETS_str,num=1,delay=0,scan_type=None):
-    '''
+def scan_time(DETS_str, num=1, delay=0, scan_type=None):
+    """
     Scan over time
 
     This scan provides a time measurement of a list of detectors, including live plotting and a live
@@ -222,36 +246,39 @@ def scan_time(DETS_str,num=1,delay=0,scan_type=None):
         allow searching the database to be easier (for instance, if all XPS data is given the
         scan_type 'XPS' then searching the database based on the keyword scan_type = 'XPS' will
         return all XPS scans).
-     '''
+    """
 
+    # change the "hints" on the detectors so that only the relevant info is included in LivePlot
+    # and LiveTable via the builtin bec functionality.
+    DETS = ESM_setup_hints(DETS_str)
+    detectors = []
+    for DET in DETS.split(","):
+        detectors.append(ip.user_ns[DET])
 
-    #change the "hints" on the detectors so that only the relevant info is included in LivePlot
-    #and LiveTable via the builtin bec functionality.
-    DETS=ESM_setup_hints(DETS_str)
-    detectors=[]
-    for DET in DETS.split(','): detectors.append(ip.user_ns[DET])
-
-    #This section determines the Y axis variable to plot for the scan
+    # This section determines the Y axis variable to plot for the scan
     Y_axis = []
 
-    for DET in DETS.split(','):   Y_axis+=ip.user_ns[DET].hints['fields']
+    for DET in DETS.split(","):
+        Y_axis += ip.user_ns[DET].hints["fields"]
 
-
-
-    #Setup metadata
-    #This section sets up the metadata that should be included in the experiment file.
-    #Users can add/or change the metadata using the md={'keyword1':'value1',
+    # Setup metadata
+    # This section sets up the metadata that should be included in the experiment file.
+    # Users can add/or change the metadata using the md={'keyword1':'value1',
     #'keyword2':'value2',..... } argument. For instance using md={'scan_type':'measurement type'}
 
-    #setup standard metadata
-    _md = {'scan_name':'scan_time','plot_Xaxis':'time','plot_Yaxis':Y_axis,
-           'scan_type':scan_type,'delay':delay}
+    # setup standard metadata
+    _md = {
+        "scan_name": "scan_time",
+        "plot_Xaxis": "time",
+        "plot_Yaxis": Y_axis,
+        "scan_type": scan_type,
+        "delay": delay,
+    }
 
+    uid = yield from count(detectors, num, delay, md=_md)
 
-    uid=yield from count(detectors,num,delay,md=_md)
-
-    #change the "hints" on the detectors back to the default
-    DETS=ESM_setup_hints(DETS+',@-1')
+    # change the "hints" on the detectors back to the default
+    DETS = ESM_setup_hints(DETS + ",@-1")
 
     return uid
 
@@ -262,9 +289,8 @@ def scan_time(DETS_str,num=1,delay=0,scan_type=None):
 ###   via bluesky.
 
 
-def scan_1D(DETS_str, scan_motor, start, end ,step_size,scan_type=None,adaptive=None):
-
-    '''
+def scan_1D(DETS_str, scan_motor, start, end, step_size, scan_type=None, adaptive=None):
+    """
     scan over a single axis taking a list of detectors at each point.
     This scan provides a 1D scan using a list of detectors, including a live plot and a live table.
 
@@ -329,58 +355,87 @@ def scan_1D(DETS_str, scan_motor, start, end ,step_size,scan_type=None,adaptive=
                      threshold               : Is a threshold for going back and rescanning a region
                                                (default is 0.8).
 
-     '''
+    """
 
-    #change the "hints" on the detectors so that only the relevant info is included in LivePlot
-    #and LiveTable
-    DETS=ESM_setup_hints(DETS_str)
-    detectors=[]
-    for DET in DETS.split(','): detectors.append(ip.user_ns[DET])
+    # change the "hints" on the detectors so that only the relevant info is included in LivePlot
+    # and LiveTable
+    DETS = ESM_setup_hints(DETS_str)
+    detectors = []
+    for DET in DETS.split(","):
+        detectors.append(ip.user_ns[DET])
 
     # This section determines the no of steps to include in order to get as close as possible to
-    #the endpoint specified.
-    if(  ( start<end and step_size<0 ) or ( start>end and step_size>0 )   ):
-        step_size*=-1
+    # the endpoint specified.
+    if (start < end and step_size < 0) or (start > end and step_size > 0):
+        step_size *= -1
 
-    steps=abs(round((end-start)/step_size))
-    stop=start+step_size*steps
+    steps = abs(round((end - start) / step_size))
+    stop = start + step_size * steps
 
-    #This section determines the Y axis and X axis variable names to plot for the scan, this is
-    #done to allow for them to be saved to the metadata
+    # This section determines the Y axis and X axis variable names to plot for the scan, this is
+    # done to allow for them to be saved to the metadata
     Y_axis = []
-    for DET in DETS.split(','):   Y_axis+=ip.user_ns[DET].hints['fields']
-    X_axis = scan_motor.hints['fields']
-    motors_list=[X_axis]
+    for DET in DETS.split(","):
+        Y_axis += ip.user_ns[DET].hints["fields"]
+    X_axis = scan_motor.hints["fields"]
+    motors_list = [X_axis]
 
-    #Setup metadata
-    #This section sets up the metadata that should be included in the experiment file. Users can
-    #add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
-    #argument. For instance using md={'scan_type':'measurement type'} will define the scan_type as
-    #a particular measurement type.
+    # Setup metadata
+    # This section sets up the metadata that should be included in the experiment file. Users can
+    # add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
+    # argument. For instance using md={'scan_type':'measurement type'} will define the scan_type as
+    # a particular measurement type.
 
-    #setup standard metadata
-    _md = {'scan_name':'scan_1D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'scan_type':scan_type,
-           'delta':step_size}
+    # setup standard metadata
+    _md = {
+        "scan_name": "scan_1D",
+        "plot_Xaxis": X_axis,
+        "plot_Yaxis": Y_axis,
+        "scan_type": scan_type,
+        "delta": step_size,
+    }
 
-
-    #Define the scan
+    # Define the scan
     def inner():
         if adaptive is None:
-            print (str(detectors)+","+str(scan_motor)+","+ str(start)+","+str(stop)+","+str(_md))
-            return ( yield from scan(detectors,scan_motor,start,stop,steps+1,md=_md))
+            print(
+                str(detectors)
+                + ","
+                + str(scan_motor)
+                + ","
+                + str(start)
+                + ","
+                + str(stop)
+                + ","
+                + str(_md)
+            )
+            return (
+                yield from scan(detectors, scan_motor, start, stop, steps + 1, md=_md)
+            )
         else:
-            return ( yield from adaptive_scan(detectors,Y_axis,scan_motor,start,stop,adaptive[0],
-                                           adaptive[1],adaptive[2],adaptive[3],adaptive[4],md=_md))
+            return (
+                yield from adaptive_scan(
+                    detectors,
+                    Y_axis,
+                    scan_motor,
+                    start,
+                    stop,
+                    adaptive[0],
+                    adaptive[1],
+                    adaptive[2],
+                    adaptive[3],
+                    adaptive[4],
+                    md=_md,
+                )
+            )
         return uid
 
+    # run the scan
+    uid = yield from inner()
 
-    #run the scan
-    uid=yield from inner()
-
-    #change the "hints" on the detectors back to the default
-    DETS=ESM_setup_hints(DETS+',@-1')
+    # change the "hints" on the detectors back to the default
+    DETS = ESM_setup_hints(DETS + ",@-1")
     return uid
-
 
 
 ###
@@ -389,9 +444,21 @@ def scan_1D(DETS_str, scan_motor, start, end ,step_size,scan_type=None,adaptive=
 ###   "set" via bluesky.
 
 
-def scan_multi_1D(DETS_str, scan_motor1, start1, end1, step_size1,scan_motor2, start2, end2,
-                  step_size2,snake=False,scan_type=None,adaptive=None):
-    '''
+def scan_multi_1D(
+    DETS_str,
+    scan_motor1,
+    start1,
+    end1,
+    step_size1,
+    scan_motor2,
+    start2,
+    end2,
+    step_size2,
+    snake=False,
+    scan_type=None,
+    adaptive=None,
+):
+    """
     Run a series of 1D scans over a second motor (each line saved seperately).
 
     Run a 2D scan using a list of detectors, having each step as a new file.
@@ -470,100 +537,154 @@ def scan_multi_1D(DETS_str, scan_motor1, start1, end1, step_size1,scan_motor2, s
                                                          change.
                                threshold               : Is a threshold for going back and rescanning
                                                          a region (default is 0.8).
-        '''
+    """
 
-    #change the "hints" on the detectors so that only the relevant info is included
-    DETS=ESM_setup_hints(DETS_str)
-    detectors=[]
-    for DET in DETS.split(','): detectors.append(ip.user_ns[DET])
+    # change the "hints" on the detectors so that only the relevant info is included
+    DETS = ESM_setup_hints(DETS_str)
+    detectors = []
+    for DET in DETS.split(","):
+        detectors.append(ip.user_ns[DET])
 
     # This section determines the no of steps to include in order to get as close as possible to the
-    #endpoint specified.
-    if(  ( start1<end1 and step_size1<0 ) or ( start1>end1 and step_size1>0 )   ):
-        step_size1*=-1
+    # endpoint specified.
+    if (start1 < end1 and step_size1 < 0) or (start1 > end1 and step_size1 > 0):
+        step_size1 *= -1
 
-    steps1=abs(round((end1-start1)/step_size1))
-    stop1=start1+step_size1*steps1
+    steps1 = abs(round((end1 - start1) / step_size1))
+    stop1 = start1 + step_size1 * steps1
 
-    if(  ( start2<end2 and step_size2<0 ) or ( start2>end2 and step_size2>0 )   ):
-        step_size2*=-1
+    if (start2 < end2 and step_size2 < 0) or (start2 > end2 and step_size2 > 0):
+        step_size2 *= -1
 
     if adaptive is None:
-        steps2=abs(round((end2-start2)/step_size2))
-        stop2=start2+step_size2*steps2
+        steps2 = abs(round((end2 - start2) / step_size2))
+        stop2 = start2 + step_size2 * steps2
     else:
-        steps2=adaptive[1]
-        stop2=end2
+        steps2 = adaptive[1]
+        stop2 = end2
 
-    initial_uid = 'current uid'
-    #This value holds the intial uid for the scan.
+    initial_uid = "current uid"
+    # This value holds the intial uid for the scan.
 
-    #This section determines the Y axis variable to plot for the scan defined by the optional input
-    #DET_channel (channel 1 is plotted if DET_channel is not specified.)
+    # This section determines the Y axis variable to plot for the scan defined by the optional input
+    # DET_channel (channel 1 is plotted if DET_channel is not specified.)
     Y_axis = []
-    for DET in DETS.split(','):   Y_axis+=ip.user_ns[DET].hints['fields']
-    X_axis = scan_motor2.hints['fields']
-    motors_list=[X_axis]
+    for DET in DETS.split(","):
+        Y_axis += ip.user_ns[DET].hints["fields"]
+    X_axis = scan_motor2.hints["fields"]
+    motors_list = [X_axis]
 
-    #Setup metadata
-    #This section sets up the metadata that should be included in the experiment file. Users can
-    #add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
-    #argument. For instance using md={'scan_name':'measurement type'} will define the scan_name as
-    #a particular measurement type.
+    # Setup metadata
+    # This section sets up the metadata that should be included in the experiment file. Users can
+    # add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
+    # argument. For instance using md={'scan_name':'measurement type'} will define the scan_name as
+    # a particular measurement type.
 
-    _md = {'scan_name':'scan_multi_1D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'scan_type':scan_type,
-           'delta':step_size2,'multi_axis':scan_motor1.name,'multi_start':start1,'multi_stop':stop1,
-           'multi_num':steps1+1, 'multi_delta':step_size1}
+    _md = {
+        "scan_name": "scan_multi_1D",
+        "plot_Xaxis": X_axis,
+        "plot_Yaxis": Y_axis,
+        "scan_type": scan_type,
+        "delta": step_size2,
+        "multi_axis": scan_motor1.name,
+        "multi_start": start1,
+        "multi_stop": stop1,
+        "multi_num": steps1 + 1,
+        "multi_delta": step_size1,
+    }
 
+    for i, c_val in enumerate(np.linspace(start1, stop1, num=(steps1 + 1))):
+        # Step through each of the outer motor values
+        yield from abs_set(scan_motor1, c_val, wait=True)
 
-    for i,c_val in enumerate(np.linspace(start1, stop1, num=(steps1+1))):
-    # Step through each of the outer motor values
-       yield from abs_set(scan_motor1, c_val, wait=True )
+        # add the location of this scan in the multi scan, and the intial uid.
 
-       #add the location of this scan in the multi scan, and the intial uid.
+        _md.update({"multi_pos": i + 1, "initial_uid": initial_uid})
 
-       _md.update ( {'multi_pos':i+1 , 'initial_uid': initial_uid } )
+        def inner_forward():
+            if adaptive is None:
+                return (
+                    yield from scan(
+                        detectors, scan_motor2, start2, stop2, steps2 + 1, md=_md
+                    )
+                )
+            else:
+                return (
+                    yield from adaptive_scan(
+                        detectors,
+                        Y_axis,
+                        scan_motor2.name,
+                        start2,
+                        stop2,
+                        adaptive[0],
+                        adaptive[1],
+                        adaptive[2],
+                        adaptive[3],
+                        adaptive[4],
+                        md=_md,
+                    )
+                )
 
+        def inner_backward():
+            if adaptive is None:
+                return (
+                    yield from scan(
+                        detectors, scan_motor2, stop2, start2, steps2 + 1, md=_md
+                    )
+                )
+            else:
+                return (
+                    yield from adaptive_scan(
+                        detectors,
+                        Y_axis,
+                        scan_motor2,
+                        stop2,
+                        start2,
+                        -1 * adaptive[0],
+                        -1 * adaptive[1],
+                        adaptive[2],
+                        adaptive[3],
+                        adaptive[4],
+                        md=_md,
+                    )
+                )
 
+        # performs the next step in the scan
+        if snake:
+            if i % 2 == 1:
+                uid = yield from inner_backward()
+            else:
+                uid = yield from inner_forward()
+        else:
+            uid = yield from inner_forward()
 
-       def inner_forward():
-           if adaptive is None:
-               return(yield from scan(detectors,scan_motor2,start2,stop2,steps2+1,md=_md))
-           else:
-              return( yield from adaptive_scan(detectors,Y_axis,scan_motor2.name,start2,stop2,
-                                               adaptive[0],adaptive[1], adaptive[2],adaptive[3],
-                                               adaptive[4],md=_md))
+        if initial_uid == "current uid":
+            initial_uid = uid
 
-       def inner_backward():
-           if adaptive is None:
-               return (yield from scan(detectors,scan_motor2,stop2,start2,steps2+1,md=_md))
-           else:
-              return( yield from adaptive_scan(detectors,Y_axis,scan_motor2,stop2,start2,
-                                               -1*adaptive[0],-1*adaptive[1], adaptive[2],
-                                               adaptive[3],adaptive[4],md=_md))
-
-       # performs the next step in the scan
-       if snake:
-           if i%2==1:
-               uid=yield from inner_backward()
-           else:
-               uid=yield from inner_forward()
-       else:
-          uid= yield from inner_forward()
-
-       if initial_uid == 'current uid':
-           initial_uid = uid
-
-    #change the "hints" on the detectors back to the default
-    DETS=ESM_setup_hints(DETS+',@-1')
+    # change the "hints" on the detectors back to the default
+    DETS = ESM_setup_hints(DETS + ",@-1")
 
     return initial_uid
 
 
-def scan_2D(DETS_str, scan_motor1, start1, end1, step_size1,scan_motor2, start2, end2, step_size2,
-            snake=False,concurrent=False,normal_spiral=False,fermat_spiral=False,
-            square_spiral=False,scan_type=None):
-    '''
+def scan_2D(
+    DETS_str,
+    scan_motor1,
+    start1,
+    end1,
+    step_size1,
+    scan_motor2,
+    start2,
+    end2,
+    step_size2,
+    snake=False,
+    concurrent=False,
+    normal_spiral=False,
+    fermat_spiral=False,
+    square_spiral=False,
+    scan_type=None,
+):
+    """
     Run a 2D scan using a list of detectors.
 
     PARAMETERS
@@ -734,181 +855,298 @@ def scan_2D(DETS_str, scan_motor1, start1, end1, step_size1,scan_motor2, start2,
                 this will be set in the plan if it is not already true.
 
 
-        '''
+    """
 
-    #change the "hints" on the detectors so that only the relevant info is included
-    DETS=ESM_setup_hints(DETS_str)
-    detectors=[]
-    for DET in DETS.split(','): detectors.append(ip.user_ns[DET])
+    # change the "hints" on the detectors so that only the relevant info is included
+    DETS = ESM_setup_hints(DETS_str)
+    detectors = []
+    for DET in DETS.split(","):
+        detectors.append(ip.user_ns[DET])
 
     # This section determines the no of steps to include in order to get as close as possible to the
-    #endpoint specified.
-    if(  ( start1<end1 and step_size1<0 ) or ( start1>end1 and step_size1>0 )   ):
-        step_size1*=-1
+    # endpoint specified.
+    if (start1 < end1 and step_size1 < 0) or (start1 > end1 and step_size1 > 0):
+        step_size1 *= -1
 
-    if(  ( start2<end2 and step_size2<0 ) or ( start2>end2 and step_size2>0 )   ):
-        step_size2*=-1
+    if (start2 < end2 and step_size2 < 0) or (start2 > end2 and step_size2 > 0):
+        step_size2 *= -1
 
     if concurrent is True:
-        steps1=abs(round((end1-start1)/step_size1))
-        stop1=start1+step_size1*steps1
+        steps1 = abs(round((end1 - start1) / step_size1))
+        stop1 = start1 + step_size1 * steps1
 
-        steps2=steps1
-        stop2=end2
-        step_size2=(stop2-start2)/steps2
+        steps2 = steps1
+        stop2 = end2
+        step_size2 = (stop2 - start2) / steps2
 
     elif normal_spiral is True or fermat_spiral is True:
-        range2=end2-start2
-        centre2=start2+(range2)/2
+        range2 = end2 - start2
+        centre2 = start2 + (range2) / 2
 
-        range1=end1-start1
-        centre1=start1+(range1)/2
+        range1 = end1 - start1
+        centre1 = start1 + (range1) / 2
 
-        delta_radius=step_size2
-        num_theta=round( (4*math.pi*delta_radius)/( math.atan(2*step_size1)*range2) )
+        delta_radius = step_size2
+        num_theta = round(
+            (4 * math.pi * delta_radius) / (math.atan(2 * step_size1) * range2)
+        )
 
     elif square_spiral is True:
-        range2=end2-start2
-        centre2=start2+(range2)/2
+        range2 = end2 - start2
+        centre2 = start2 + (range2) / 2
 
-        range1=end1-start1
-        centre1=start1+(range1)/2
+        range1 = end1 - start1
+        centre1 = start1 + (range1) / 2
 
-        steps2=round((end2-start2)/step_size2)
-        steps1=round((end1-start1)/step_size1)
+        steps2 = round((end2 - start2) / step_size2)
+        steps1 = round((end1 - start1) / step_size1)
 
-
-        if ( (steps2%2==1) and (steps1%2!=1) ) or ( (steps2%2!=1) and (steps1%2==1) ) :
-            steps1+=1
-
+        if ((steps2 % 2 == 1) and (steps1 % 2 != 1)) or (
+            (steps2 % 2 != 1) and (steps1 % 2 == 1)
+        ):
+            steps1 += 1
 
     else:
-        steps1=abs(round((end1-start1)/step_size1))
-        stop1=start1+step_size1*steps1
+        steps1 = abs(round((end1 - start1) / step_size1))
+        stop1 = start1 + step_size1 * steps1
 
-        steps2=abs(round((end2-start2)/step_size2))
-        stop2=start2+step_size2*steps2
+        steps2 = abs(round((end2 - start2) / step_size2))
+        stop2 = start2 + step_size2 * steps2
 
-
-
-    #This section determines the Z axis variable to plot for the scan.
+    # This section determines the Z axis variable to plot for the scan.
     Z_axis = []
-    for DET in DETS.split(','):   Z_axis+=ip.user_ns[DET].hints['fields']
-    X_axis = scan_motor2.hints['fields']
-    Y_axis = scan_motor1.hints['fields']
+    for DET in DETS.split(","):
+        Z_axis += ip.user_ns[DET].hints["fields"]
+    X_axis = scan_motor2.hints["fields"]
+    Y_axis = scan_motor1.hints["fields"]
 
-    #Setup metadata
-    #This section sets up the metadata that should be included in the experiment file. Users can
-    #add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
-    #argument. For instance using md={'scan_name':'measurement type'} will define the scan_name
-    #as a particular measurement type.
+    # Setup metadata
+    # This section sets up the metadata that should be included in the experiment file. Users can
+    # add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
+    # argument. For instance using md={'scan_name':'measurement type'} will define the scan_name
+    # as a particular measurement type.
 
     if concurrent is True:
-        _md = {'scan_name':'scan_2D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'plot_Zaxis':Z_axis,
-               'scan_type':scan_type,'X_axis':X_axis,'X_start':start2,'X_stop':stop2,
-               'X_num':steps2+1,'X_delta':step_size2,'Y_axis':Y_axis,'Y_start':start1,
-               'Y_stop':stop1,'Y_num':steps1+1,'Y_delta':step_size1}
+        _md = {
+            "scan_name": "scan_2D",
+            "plot_Xaxis": X_axis,
+            "plot_Yaxis": Y_axis,
+            "plot_Zaxis": Z_axis,
+            "scan_type": scan_type,
+            "X_axis": X_axis,
+            "X_start": start2,
+            "X_stop": stop2,
+            "X_num": steps2 + 1,
+            "X_delta": step_size2,
+            "Y_axis": Y_axis,
+            "Y_start": start1,
+            "Y_stop": stop1,
+            "Y_num": steps1 + 1,
+            "Y_delta": step_size1,
+        }
 
         def inner_prod():
-            return(yield from inner_product_scan(detectors,steps1+1,scan_motor1,start1,stop1,
-                                                 scan_motor2,start2,stop2,md=_md))
+            return (
+                yield from inner_product_scan(
+                    detectors,
+                    steps1 + 1,
+                    scan_motor1,
+                    start1,
+                    stop1,
+                    scan_motor2,
+                    start2,
+                    stop2,
+                    md=_md,
+                )
+            )
 
-        uid= yield from inner_prod()
+        uid = yield from inner_prod()
 
     elif normal_spiral is True:
-         _md = {'scan_name':'scan_2D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'plot_Zaxis':Z_axis,
-                'scan_type':scan_type, 'X_axis':X_axis,'X_start':start2,'X_end':end2,
-                'X_centre':centre2,'X_range':range2,'delta_radius':delta_radius,
-                'Y_axis':Y_axis,'Y_start':start1,'Y_end':end1,'Y_centre':centre1,
-                'Y_range':range1,'num_theta':num_theta}
+        _md = {
+            "scan_name": "scan_2D",
+            "plot_Xaxis": X_axis,
+            "plot_Yaxis": Y_axis,
+            "plot_Zaxis": Z_axis,
+            "scan_type": scan_type,
+            "X_axis": X_axis,
+            "X_start": start2,
+            "X_end": end2,
+            "X_centre": centre2,
+            "X_range": range2,
+            "delta_radius": delta_radius,
+            "Y_axis": Y_axis,
+            "Y_start": start1,
+            "Y_end": end1,
+            "Y_centre": centre1,
+            "Y_range": range1,
+            "num_theta": num_theta,
+        }
 
+        # Define some decorators to perform at each step (table update, plot update etc.)
+        #         mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
+        #                                                                                             end1+step_size1) )
 
-         # Define some decorators to perform at each step (table update, plot update etc.)
-#         mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
-#                                                                                             end1+step_size1) )
+        #         @subs_decorator(mesh)
 
-#         @subs_decorator(mesh)
+        def spiral_scan():
+            return (
+                yield from spiral(
+                    detectors,
+                    scan_motor2,
+                    scan_motor1,
+                    centre2,
+                    centre1,
+                    range2,
+                    range1,
+                    delta_radius,
+                    num_theta,
+                    md=_md,
+                )
+            )
 
-
-
-         def spiral_scan():
-             return(yield from spiral(detectors,scan_motor2,scan_motor1,centre2,centre1,range2,
-                                      range1,delta_radius,num_theta,md=_md))
-
-         uid= yield from spiral_scan()
-
+        uid = yield from spiral_scan()
 
     elif fermat_spiral is True:
-        _md = {'scan_name':'scan_2D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'plot_Zaxis':Z_axis,
-               'scan_type':scan_type, 'X_axis':X_axis,'X_start':start2,'X_end':end2,
-               'X_centre':centre2,'X_range':range2,'delta_radius':delta_radius,'Y_axis':Y_axis,
-               'Y_start':start1,'Y_end':end1,'Y_centre':centre1,'Y_range':range1,
-               'num_theta':num_theta}
+        _md = {
+            "scan_name": "scan_2D",
+            "plot_Xaxis": X_axis,
+            "plot_Yaxis": Y_axis,
+            "plot_Zaxis": Z_axis,
+            "scan_type": scan_type,
+            "X_axis": X_axis,
+            "X_start": start2,
+            "X_end": end2,
+            "X_centre": centre2,
+            "X_range": range2,
+            "delta_radius": delta_radius,
+            "Y_axis": Y_axis,
+            "Y_start": start1,
+            "Y_end": end1,
+            "Y_centre": centre1,
+            "Y_range": range1,
+            "num_theta": num_theta,
+        }
 
+        #        mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
+        #                                                                                             end1+step_size1) )
 
-
-#        mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
-#                                                                                             end1+step_size1) )
-
-#        @subs_decorator(mesh)
-
+        #        @subs_decorator(mesh)
 
         def fermat_scan():
-            return(yield from spiral_fermat(detectors,scan_motor2,scan_motor1,centre2,centre1,range2,
-                                            range1,delta_radius, num_theta/2,md=_md))
+            return (
+                yield from spiral_fermat(
+                    detectors,
+                    scan_motor2,
+                    scan_motor1,
+                    centre2,
+                    centre1,
+                    range2,
+                    range1,
+                    delta_radius,
+                    num_theta / 2,
+                    md=_md,
+                )
+            )
 
-        uid= yield from fermat_scan()
-
+        uid = yield from fermat_scan()
 
     elif square_spiral is True:
-        _md = {'scan_name':'scan_2D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'plot_Zaxis':Z_axis,
-               'scan_type':scan_type, 'X_axis':X_axis,'X_start':start2,'X_end':end2,
-               'X_centre':centre2,'X_range':range2,'x_num':steps2, 'Y_axis':Y_axis,'Y_start':start1,
-               'Y_end':end1,'Y_centre':centre1,'Y_range':range1,'y_num':steps1}
+        _md = {
+            "scan_name": "scan_2D",
+            "plot_Xaxis": X_axis,
+            "plot_Yaxis": Y_axis,
+            "plot_Zaxis": Z_axis,
+            "scan_type": scan_type,
+            "X_axis": X_axis,
+            "X_start": start2,
+            "X_end": end2,
+            "X_centre": centre2,
+            "X_range": range2,
+            "x_num": steps2,
+            "Y_axis": Y_axis,
+            "Y_start": start1,
+            "Y_end": end1,
+            "Y_centre": centre1,
+            "Y_range": range1,
+            "y_num": steps1,
+        }
 
+        #        mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
+        #                                                                                              end1+step_size1) )
 
-#        mesh = LiveMesh(X_axis,Y_axis,Z_axis, xlim=(start2-step_size2,end2+step_size2), ylim=(start1-step_size1,
-#                                                                                              end1+step_size1) )
-
-#        @subs_decorator(mesh)
-
+        #        @subs_decorator(mesh)
 
         def square_scan():
-            return(yield from spiral_square(detectors,scan_motor2,scan_motor1,centre2,centre1,
-                                            range2,range1, steps2+1,steps1+1,md=_md))
+            return (
+                yield from spiral_square(
+                    detectors,
+                    scan_motor2,
+                    scan_motor1,
+                    centre2,
+                    centre1,
+                    range2,
+                    range1,
+                    steps2 + 1,
+                    steps1 + 1,
+                    md=_md,
+                )
+            )
 
-        uid= yield from square_scan()
-
-
+        uid = yield from square_scan()
 
     else:
-        _md = {'scan_name':'scan_2D','plot_Xaxis':X_axis,'plot_Yaxis':Y_axis,'plot_Zaxis':Z_axis,
-               'scan_type':scan_type, 'X_axis':X_axis,'X_start':start2,'X_stop':stop2,
-               'X_num':steps2+1,'X_delta':step_size2, 'Y_axis':Y_axis,'Y_start':start1,
-               'Y_stop':stop1,'Y_num':steps1+1,'Y_delta':step_size1}
+        _md = {
+            "scan_name": "scan_2D",
+            "plot_Xaxis": X_axis,
+            "plot_Yaxis": Y_axis,
+            "plot_Zaxis": Z_axis,
+            "scan_type": scan_type,
+            "X_axis": X_axis,
+            "X_start": start2,
+            "X_stop": stop2,
+            "X_num": steps2 + 1,
+            "X_delta": step_size2,
+            "Y_axis": Y_axis,
+            "Y_start": start1,
+            "Y_stop": stop1,
+            "Y_num": steps1 + 1,
+            "Y_delta": step_size1,
+        }
 
-#        grid = LiveGrid( (steps1+1,steps2+1) , Z_axis , ylabel= Y_axis, xlabel= X_axis, extent=(start2-step_size2/2,                                                                                                stop2+step_size2/2,start1-step_size1/2,stop1+step_size1/2),
-#                         aspect=(abs( (stop2-start2)/(stop1-start1) ) ) )
+        #        grid = LiveGrid( (steps1+1,steps2+1) , Z_axis , ylabel= Y_axis, xlabel= X_axis, extent=(start2-step_size2/2,                                                                                                stop2+step_size2/2,start1-step_size1/2,stop1+step_size1/2),
+        #                         aspect=(abs( (stop2-start2)/(stop1-start1) ) ) )
 
-#        @subs_decorator(grid)
+        #        @subs_decorator(grid)
         # Define some decorators to perform at each step (table update, plot update etc.)
 
         def outer_prod():
-            return(yield from outer_product_scan(detectors,scan_motor1,start1,stop1,steps1+1,
-                                                 scan_motor2,start2,stop2, steps2+1,snake,md=_md))
+            return (
+                yield from outer_product_scan(
+                    detectors,
+                    scan_motor1,
+                    start1,
+                    stop1,
+                    steps1 + 1,
+                    scan_motor2,
+                    start2,
+                    stop2,
+                    steps2 + 1,
+                    snake,
+                    md=_md,
+                )
+            )
 
-        uid=yield from outer_prod()
+        uid = yield from outer_prod()
 
-
-    #change the "hints" on the detectors back to the default
-    DETS=ESM_setup_hints(DETS+",@-1")
+    # change the "hints" on the detectors back to the default
+    DETS = ESM_setup_hints(DETS + ",@-1")
 
     return uid
 
 
-
-def scan_ND(DETS_str, *args,concurrent=False,scan_type=None):
-    ''' Run an ND scan using a list of detectors.
+def scan_ND(DETS_str, *args, concurrent=False, scan_type=None):
+    """Run an ND scan using a list of detectors.
 
 
 
@@ -969,137 +1207,143 @@ def scan_ND(DETS_str, *args,concurrent=False,scan_type=None):
 
                            REQUIRED PARAMETERS FOR THIS OPTION
                                no extra parameters are required.
-        '''
+    """
 
-    #change the "hints" on the detectors so that only the relevant info is included
-    DETS=ESM_setup_hints(DETS_str)
-    detectors=[]
-    for DET in DETS.split(','): detectors.append(ip.user_ns[DET])
+    # change the "hints" on the detectors so that only the relevant info is included
+    DETS = ESM_setup_hints(DETS_str)
+    detectors = []
+    for DET in DETS.split(","):
+        detectors.append(ip.user_ns[DET])
 
     args = list(args)
-    #turn the *args entry itno a list
-    args.insert(4,False)
-    #insert "False" as the snake value for the first argument to make it easy to seperate the axes.
-    if len(args) %5 !=0:
+    # turn the *args entry itno a list
+    args.insert(4, False)
+    # insert "False" as the snake value for the first argument to make it easy to seperate the axes.
+    if len(args) % 5 != 0:
         raise ValueError("wrong number of positional arguments")
 
-    chunk_args= chunked(args,5)
-
+    chunk_args = chunked(args, 5)
 
     Dim = len(chunk_args)
-    #define the number of motor axes in the scan
+    # define the number of motor axes in the scan
     new_args = []
-    #define the new args list to be sent to the scan plan.
+    # define the new args list to be sent to the scan plan.
     motors_list = []
 
     # This section determines the no of steps to include in order to get as close as possible to the endpoint specified.
 
-    _md = {'scan_name':'scan_ND','scan_type':scan_type}
+    _md = {"scan_name": "scan_ND", "scan_type": scan_type}
 
     # for each motor axis in the scan.
-    for i,motor_list in enumerate(chunk_args):
+    for i, motor_list in enumerate(chunk_args):
+        motor = [motor_list[0]]
+        motors_list.append(list(motor)[0].hints["fields"])
 
-        motor=[motor_list[0]]
-        motors_list.append(list(motor)[0].hints['fields'])
-
-        if (  (motor_list[1]<motor_list[2] and motor_list[3]<0) or
-              ( motor_list[1]>motor_list[2] and motor_list[3]>0 )   ):
-            motor_list[3]*=-1
+        if (motor_list[1] < motor_list[2] and motor_list[3] < 0) or (
+            motor_list[1] > motor_list[2] and motor_list[3] > 0
+        ):
+            motor_list[3] *= -1
         # ensure that the direction defined by the step_size matches that defined by start and stop.
 
-
-
         if concurrent is True:
-        #if the scan is an inner product scan.
-            for DET in DETS.split(','):   Y_axis+=ip.user_ns[DET].hints['fields']
+            # if the scan is an inner product scan.
+            for DET in DETS.split(","):
+                Y_axis += ip.user_ns[DET].hints["fields"]
             new_args.append(motor_list[0])
             new_args.append(motor_list[1])
             if i == 0:
-                steps=abs(round((motor_list[2]-motor_list[1])/motor_list[3]))+1
-                stop=motor_list[1]+motor_list[3]*(steps-1)
+                steps = abs(round((motor_list[2] - motor_list[1]) / motor_list[3])) + 1
+                stop = motor_list[1] + motor_list[3] * (steps - 1)
                 new_args.append(stop)
-                _md.update({'steps':steps,'axis'+str(Dim-i): motor_list[0].name,
-                            'start'+str(Dim-i): motor_list[1],'stop'+str(Dim-i):motor_list[2],
-                            'delta'+str(Dim-i):motor_list[3]})
+                _md.update(
+                    {
+                        "steps": steps,
+                        "axis" + str(Dim - i): motor_list[0].name,
+                        "start" + str(Dim - i): motor_list[1],
+                        "stop" + str(Dim - i): motor_list[2],
+                        "delta" + str(Dim - i): motor_list[3],
+                    }
+                )
                 X_motors = [motor_list[0]]
             else:
-                step_size=(motor_list[2]-motor_list[1])/(steps-1)
+                step_size = (motor_list[2] - motor_list[1]) / (steps - 1)
                 new_args.append(motor_list[2])
-                _md.update({'axis'+str(Dim-i): motor_list[0].name,'start'+str(Dim-i): motor_list[1],
-                            'stop'+str(Dim-i):motor_list[2],'delta'+str(Dim-i):step_size})
-
+                _md.update(
+                    {
+                        "axis" + str(Dim - i): motor_list[0].name,
+                        "start" + str(Dim - i): motor_list[1],
+                        "stop" + str(Dim - i): motor_list[2],
+                        "delta" + str(Dim - i): step_size,
+                    }
+                )
 
         else:
-        # if the scan is a normal outer product scan
-            #define the number of steps and the new stop value based on the step_size.
-            steps=abs(round((motor_list[2]-motor_list[1])/motor_list[3]))
-            stop=motor_list[1]+motor_list[3]*steps
+            # if the scan is a normal outer product scan
+            # define the number of steps and the new stop value based on the step_size.
+            steps = abs(round((motor_list[2] - motor_list[1]) / motor_list[3]))
+            stop = motor_list[1] + motor_list[3] * steps
 
-            #add the new values to the new_args list
+            # add the new values to the new_args list
             new_args.append(motor_list[0])
             new_args.append(motor_list[1])
             new_args.append(stop)
-            new_args.append(steps+1)
+            new_args.append(steps + 1)
 
             if i != 0:
                 new_args.append(motor_list[4])
 
+    # Setup metadata
+    # This section sets up the metadata that should be included in the experiment file. Users can
+    # add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
+    # argument. For instance using md={'scan_name':'measurement type'} will define the scan_name
+    # as a particular measurement type.
+    _md.update(
+        {
+            "axis" + str(Dim - i): motor_list[0].name,
+            "start" + str(Dim - i): motor_list[1],
+            "stop" + str(Dim - i): motor_list[2],
+            "num" + str(Dim - i): steps,
+            "delta" + str(Dim - i): motor_list[3],
+        }
+    )
 
-
-
-    #Setup metadata
-    #This section sets up the metadata that should be included in the experiment file. Users can
-    #add/or change the metadata using the md={'keyword1':'value1','keyword2':'value2',..... }
-    #argument. For instance using md={'scan_name':'measurement type'} will define the scan_name
-    #as a particular measurement type.
-    _md.update({'axis'+str(Dim-i): motor_list[0].name,'start'+str(Dim-i): motor_list[1],
-                'stop'+str(Dim-i):motor_list[2],'num'+str(Dim-i):steps,
-                'delta'+str(Dim-i):motor_list[3]})
-
-
-
-    #This section sets up the rest of the info and performs the correct scan.
+    # This section sets up the rest of the info and performs the correct scan.
     if concurrent is True:
-    #if the scan is an inner product scan.
+        # if the scan is an inner product scan.
 
-        #setup the table, plotting and the metadata.
+        # setup the table, plotting and the metadata.
 
         def inner_prod():
-            return(yield from inner_product_scan(detectors,steps,*new_args,md=_md))
+            return (yield from inner_product_scan(detectors, steps, *new_args, md=_md))
 
-        uid= yield from inner_prod()
+        uid = yield from inner_prod()
 
     else:
-    # if the scan is a normal outer product scan
+        # if the scan is a normal outer product scan
 
-
-        #re-cast the new_args list to a tuple
+        # re-cast the new_args list to a tuple
         new_args = tuple(new_args)
 
         # Define some decorators to perform at each step (table update, plot update etc.)
 
-
         def outer_prod():
-            return(yield from outer_product_scan(detectors,*new_args,md=_md))
+            return (yield from outer_product_scan(detectors, *new_args, md=_md))
 
+        uid = yield from outer_prod()
 
-        uid=yield from outer_prod()
-
-    #change the "hints" on the detectors back to the default
-    DETS=ESM_setup_hints(DETS+',@-1')
+    # change the "hints" on the detectors back to the default
+    DETS = ESM_setup_hints(DETS + ",@-1")
 
     return uid
-
-
-
 
 
 ###
 ###Alignment scans
 ###These are scans specifically written for beamline alignment.
 
-def M3_pitch_alignment(Branch="A",adaptive=False):
-    '''
+
+def M3_pitch_alignment(Branch="A", adaptive=False):
+    """
     Runs a scan of the M3 mirror pitch to the exit slit to find the maximum and then sets the pitch to this value.
 
     This scan is used to find the optimal location of either the M3 mirror pitch. It runs a 1D scan over a
@@ -1117,133 +1361,168 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
     adaptive : Boolean, optional
         This allows for the scan to be run as an adaptive scan or not.
 
-    '''
+    """
 
-    x_axis = M3.Ry                 # The x axis of the scan
+    x_axis = M3.Ry  # The x axis of the scan
 
-    FE_hgap_axis = FEslit.h_gap     # The front end horizontal gap motor
-    FE_hgap_pos  = 1.0               # The front end horizontal gap value
-    FE_vgap_axis = FEslit.v_gap     # The front end vertical gap motor
-    FE_vgap_pos  = 1.0               # The front end vertical gap value
+    FE_hgap_axis = FEslit.h_gap  # The front end horizontal gap motor
+    FE_hgap_pos = 1.0  # The front end horizontal gap value
+    FE_vgap_axis = FEslit.v_gap  # The front end vertical gap motor
+    FE_vgap_pos = 1.0  # The front end vertical gap value
 
-    scan_type_str='M3_pitch_alignment_'+Branch
+    scan_type_str = "M3_pitch_alignment_" + Branch
 
     if Branch == "A":
-        x_start = -0.718              # The x_axis start value of the scan
-        x_end   = -0.705              # The x_axis end value of the scan
-        stepsize_min = 0.0001        # The minimum x_axis step size of the scan
-        stepsize_max = 0.002         # The maximum x_axis step size of the scan
-        target_delta = 5E-9          # The target delta between each step in the scan
-        backstep = True               # Allow backsteps to complete the peak or not
-        threshold =  0.8              # The threshold for the adaptive scan
+        x_start = -0.718  # The x_axis start value of the scan
+        x_end = -0.705  # The x_axis end value of the scan
+        stepsize_min = 0.0001  # The minimum x_axis step size of the scan
+        stepsize_max = 0.002  # The maximum x_axis step size of the scan
+        target_delta = 5e-9  # The target delta between each step in the scan
+        backstep = True  # Allow backsteps to complete the peak or not
+        threshold = 0.8  # The threshold for the adaptive scan
 
-        detector = qem07      # The detector to use for the scan.
-        det_range = '350 pC'     # The range to use for the scan
+        detector = qem07  # The detector to use for the scan.
+        det_range = "350 pC"  # The range to use for the scan
         det_vals_reading = 5  # The values per reading to use.
-        det_avg_time = 1    # The averaging time to use.
-        det_int_time = 0.0004 # The integration time to use.
+        det_avg_time = 1  # The averaging time to use.
+        det_int_time = 0.0004  # The integration time to use.
 
-        Exit_Slit_hgap_motor = ExitSlitA.h_gap # The motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 5                # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitA.v_gap # THe motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 5                # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitA.h_gap
+        )  # The motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 5  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitA.v_gap
+        )  # THe motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 5  # The vertical gap opening to use
 
-
-        Diode_motor = BTA2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
-
-
+        Diode_motor = BTA2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
     elif Branch == "B":
-        x_start = -0.75              # The x_axis start value of the scan
-        x_end   = -0.725             # The x_axis end value of the scan
-        stepsize_min = 0.0001        # The minimum x_axis step size of the scan
-        stepsize_max = 0.002         # The maximum x_axis step size of the scan
-        target_delta = 5E-9          # The target delta between each step in the adaptive scan
-        backstep = True               # Allow backsteps to complete the peak or not in the adative scan
-        threshold = 0.8               # the threshold for the adaptive scan
+        x_start = -0.75  # The x_axis start value of the scan
+        x_end = -0.725  # The x_axis end value of the scan
+        stepsize_min = 0.0001  # The minimum x_axis step size of the scan
+        stepsize_max = 0.002  # The maximum x_axis step size of the scan
+        target_delta = 5e-9  # The target delta between each step in the adaptive scan
+        backstep = (
+            True  # Allow backsteps to complete the peak or not in the adative scan
+        )
+        threshold = 0.8  # the threshold for the adaptive scan
 
-
-        detector = qem12      # The detector to use for the scan.
-        det_range = '350 pC'     # The range to use for the scan
+        detector = qem12  # The detector to use for the scan.
+        det_range = "350 pC"  # The range to use for the scan
         det_vals_reading = 5  # The values per reading to use.
-        det_avg_time = 1      # The averaging time to use.
-        det_int_time = 0.0004 # The integration time to use.
+        det_avg_time = 1  # The averaging time to use.
+        det_int_time = 0.0004  # The integration time to use.
 
-        Exit_Slit_hgap_motor = ExitSlitB.h_gap # The motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 5                 # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitB.v_gap # The motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 5                  # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitB.h_gap
+        )  # The motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 5  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitB.v_gap
+        )  # The motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 5  # The vertical gap opening to use
 
-        Diode_motor = BTB2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
-
+        Diode_motor = BTB2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
     # Read the intial values for each motor that is to be moved.
-    initial_x_pos  =x_axis.position
+    initial_x_pos = x_axis.position
 
     initial_FE_hgap_pos = FE_hgap_axis.position
     initial_FE_vgap_pos = FE_vgap_axis.position
 
-    initial_det_range = detector.em_range.get()               # The initial detector range
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+    initial_det_range = detector.em_range.get()  # The initial detector range
+    initial_det_vals_reading = (
+        detector.values_per_read.get()
+    )  # The initial values per reading.
+    initial_det_avg_time = detector.averaging_time.get()  # The initial averaging time.
+    initial_det_int_time = (
+        detector.integration_time.get()
+    )  # The initial integration time.
 
-    initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap opening
-    initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap opening
+    initial_Exit_Slit_hgap_pos = (
+        Exit_Slit_hgap_motor.position
+    )  # The initial horizontal gap opening
+    initial_Exit_Slit_vgap_pos = (
+        Exit_Slit_vgap_motor.position
+    )  # The initial vertical gap opening
 
-    initial_diode_pos = Diode_motor.position                   # The initial location of the diode motor.
+    initial_diode_pos = Diode_motor.position  # The initial location of the diode motor.
 
-    #Move the values to the starting positions for the scan.
+    # Move the values to the starting positions for the scan.
 
-    yield from mv( x_axis,x_start, #FE_hgap_axis,FE_hgap_pos, FE_vgap_axis,FE_vgap_pos,
-                   Diode_motor,Diode_pos, Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,
-                   Exit_Slit_vgap_motor,Exit_Slit_vgap_pos)
+    yield from mv(
+        x_axis,
+        x_start,  # FE_hgap_axis,FE_hgap_pos, FE_vgap_axis,FE_vgap_pos,
+        Diode_motor,
+        Diode_pos,
+        Exit_Slit_hgap_motor,
+        Exit_Slit_hgap_pos,
+        Exit_Slit_vgap_motor,
+        Exit_Slit_vgap_pos,
+    )
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
+    detector.em_range.put(det_range)  # The range to use for the scan
+    detector.values_per_read.put(det_vals_reading)  # The values per reading to use.
+    detector.averaging_time.put(det_avg_time)  # The averaging time to use.
+    detector.integration_time.put(det_int_time)  # The integration time to use.
 
-    #Run the scan
+    # Run the scan
     if adaptive is False:
-        uid= yield from scan_1D(detector.name,x_axis,x_start,x_end,stepsize_min,
-                                scan_type=scan_type_str)
+        uid = yield from scan_1D(
+            detector.name, x_axis, x_start, x_end, stepsize_min, scan_type=scan_type_str
+        )
     elif adaptive is True:
-        uid= yield from scan_1D(detector.name,x_axis,x_start,x_end,stepsize_min,
-                                scan_type=scan_type_str,
-                                adaptive=[stepsize_min,stepsize_max, target_delta,backstep,threshold])
+        uid = yield from scan_1D(
+            detector.name,
+            x_axis,
+            x_start,
+            x_end,
+            stepsize_min,
+            scan_type=scan_type_str,
+            adaptive=[stepsize_min, stepsize_max, target_delta, backstep, threshold],
+        )
 
+    # move everything to the initial positions
+    yield from mv(
+        Diode_motor,
+        initial_diode_pos,
+        Exit_Slit_hgap_motor,
+        initial_Exit_Slit_hgap_pos,
+        Exit_Slit_vgap_motor,
+        initial_Exit_Slit_vgap_pos,
+    )
+    # FE_hgap_axis,initial_FE_hgap_pos, FE_vgap_axis,initial_FE_vgap_pos
 
-    #move everything to the initial positions
-    yield from mv( Diode_motor,initial_diode_pos, Exit_Slit_hgap_motor,initial_Exit_Slit_hgap_pos,
-                   Exit_Slit_vgap_motor,initial_Exit_Slit_vgap_pos)
-                  #FE_hgap_axis,initial_FE_hgap_pos, FE_vgap_axis,initial_FE_vgap_pos
+    detector.em_range.put(initial_det_range)  # The range to use for the scan
+    detector.values_per_read.put(
+        initial_det_vals_reading
+    )  # The values per reading to use.
+    detector.averaging_time.put(initial_det_avg_time)  # The averaging time to use.
+    detector.integration_time.put(initial_det_int_time)  # The integration time to use
 
-
-    detector.em_range.put(initial_det_range)                    # The range to use for the scan
-    detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(initial_det_int_time)         # The integration time to use
-
-    #Determine the location of the maximum intensity.
+    # Determine the location of the maximum intensity.
 
     if uid is not None:
-        hdr=db[-1]
-        output=max_in_1D(hdr.start['scan_id'])
-        yield from mv( x_axis,initial_x_pos ) # this move helps with the backlash issue I have noticed
-        yield from mv( x_axis,output[0] )
-        #set the scan axis to the new value.
+        hdr = db[-1]
+        output = max_in_1D(hdr.start["scan_id"])
+        yield from mv(
+            x_axis, initial_x_pos
+        )  # this move helps with the backlash issue I have noticed
+        yield from mv(x_axis, output[0])
+        # set the scan axis to the new value.
     else:
-        yield from mv( x_axis,initial_x_pos )
-        output=None
+        yield from mv(x_axis, initial_x_pos)
+        output = None
 
     return output
 
 
-def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=False):
-    '''
+def FE_slits_alignment(detector_location="Diagon", mv_center=False, return_all=False):
+    """
     Take an image of the beam relative to the Bremstrahlung collimator using the diagon or using either branches
     gas cell diode.
 
@@ -1267,113 +1546,124 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
         This allows for the routine to return all motors moved during the scan to their original locations.
         To use this set return_all = True.
 
-    '''
+    """
     # Define some parameters that are to be used in the scan, these are designed to be 'preset' and hence are not
     #'inputted' into the scan.
     Und = EPU1.gap
-    Und_gap = 35.5  #The gap to use for the undulator, together with the photon energy they ensure that the 'image' is of
-               # a 2D 'peak' to allow for ease of calculations in the routine.
+    Und_gap = 35.5  # The gap to use for the undulator, together with the photon energy they ensure that the 'image' is of
+    # a 2D 'peak' to allow for ease of calculations in the routine.
 
-    x_axis = FEslit.h_center # The x axis of the scan
-    x_start = -5              # The x_axis start value of the scan
-    x_end   = 5               # The x_axis end value of the scan
-    x_stepsize = .5          # The x_axis step size of the scan
+    x_axis = FEslit.h_center  # The x axis of the scan
+    x_start = -5  # The x_axis start value of the scan
+    x_end = 5  # The x_axis end value of the scan
+    x_stepsize = 0.5  # The x_axis step size of the scan
 
-    y_axis = FEslit.v_center # The y axis of the scan
-    y_start = -5              # The y_axis start value of the scan
-    y_end   = 5              # The y_axis end value of the scan
-    y_stepsize = .5         # The y_axis step size of the scan
+    y_axis = FEslit.v_center  # The y axis of the scan
+    y_start = -5  # The y_axis start value of the scan
+    y_end = 5  # The y_axis end value of the scan
+    y_stepsize = 0.5  # The y_axis step size of the scan
 
+    FE_hgap_axis = FEslit.h_gap  # The front end horizontal gap motor
+    FE_hgap_pos = 0.75  # The front end horizontal gap value
+    FE_vgap_axis = FEslit.v_gap  # The front end vertical gap motor
+    FE_vgap_pos = 0.75  # The front end vertical gap value
 
-    FE_hgap_axis = FEslit.h_gap     # The front end horizontal gap motor
-    FE_hgap_pos  = 0.75              # The front end horizontal gap value
-    FE_vgap_axis = FEslit.v_gap     # The front end vertical gap motor
-    FE_vgap_pos  = 0.75              # The front end vertical gap value
+    accuracy_level = 0.2  # Used to compare the old and new "center" positions, if the difference is larger
+    # than this it sends out a warning and does not update
 
-    accuracy_level = 0.2    #Used to compare the old and new "center" positions, if the difference is larger
-                            #than this it sends out a warning and does not update
-
-
-    if detector_location == 'Diagon':
-        detector = Diag1_CamH # The detector to use for the scan.
-        det_exp_time = 0.5    # The exposure time to use for the scan.
+    if detector_location == "Diagon":
+        detector = Diag1_CamH  # The detector to use for the scan.
+        det_exp_time = 0.5  # The exposure time to use for the scan.
         det_aqu_period = 0.5  # The aquire period for the detector.
-        det_num_images = 1    # The number of images to aquire at each step.
-        det_exp_image = 1     # The number of exposures per image to aquire at each step.
+        det_num_images = 1  # The number of images to aquire at each step.
+        det_exp_image = 1  # The number of exposures per image to aquire at each step.
 
-        det_Mir_motor = Diagon.H_mirror # The motor axis associated with the mirror for the diagon detector
-        det_Mir_pos = -55               # The value the Mirror motor should be at during the measurement
-        det_Yag_motor = Diagon.H_Yag    # The motor axis associated with the Yag for the diagon detector
-        det_Yag_pos = 0                 # The value the Yag motor should be during the measurement
+        det_Mir_motor = (
+            Diagon.H_mirror
+        )  # The motor axis associated with the mirror for the diagon detector
+        det_Mir_pos = (
+            -55
+        )  # The value the Mirror motor should be at during the measurement
+        det_Yag_motor = (
+            Diagon.H_Yag
+        )  # The motor axis associated with the Yag for the diagon detector
+        det_Yag_pos = 0  # The value the Yag motor should be during the measurement
 
-        det_Mir2nd_motor = Diagon.V_mirror # The motor axis associated with the mirror for the diagon detector
-        det_Mir2nd_pos = 0                 # The value the Mirror motor should be at during the measurement
-                                           # (indicating that it is retracted).
+        det_Mir2nd_motor = (
+            Diagon.V_mirror
+        )  # The motor axis associated with the mirror for the diagon detector
+        det_Mir2nd_pos = (
+            0  # The value the Mirror motor should be at during the measurement
+        )
+        # (indicating that it is retracted).
 
-        det_ROI1_Xstart = 300 # The starting point for ROI1.
-        det_ROI1_Xsize  = 780 # The size, in points, for ROI1.
+        det_ROI1_Xstart = 300  # The starting point for ROI1.
+        det_ROI1_Xsize = 780  # The size, in points, for ROI1.
         det_ROI1_Ystart = 85  # The starting point for ROI1.
-        det_ROI1_Ysize  = 780 # The size, in points, for ROI1.
+        det_ROI1_Ysize = 780  # The size, in points, for ROI1.
 
-        scan_type_str='FE_slit_alignment_Diagon'
+        scan_type_str = "FE_slit_alignment_Diagon"
 
-    elif detector_location == 'Gas_cellA':
-        detector = qem07      # The detector to use for the scan.
-        det_range = '50 pC'     # The range to use for the scan
+    elif detector_location == "Gas_cellA":
+        detector = qem07  # The detector to use for the scan.
+        det_range = "50 pC"  # The range to use for the scan
         det_vals_reading = 5  # The values per reading to use.
-        det_avg_time = 0.1    # The averaging time to use.
-        det_int_time = 0.0004 # The integration time to use.
+        det_avg_time = 0.1  # The averaging time to use.
+        det_int_time = 0.0004  # The integration time to use.
 
-        Exit_Slit_hgap_motor = ExitSlitA.h_gap # THe motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 500                # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitA.v_gap # THe motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 500                # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitA.h_gap
+        )  # THe motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 500  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitA.v_gap
+        )  # THe motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 500  # The vertical gap opening to use
 
-        PGM_Energy_motor = PGM.Energy    #The motor required to move the PGM energy.
-        PGM_Energy_pos = 662             #THe energy at which to perform the scan.
+        PGM_Energy_motor = PGM.Energy  # The motor required to move the PGM energy.
+        PGM_Energy_pos = 662  # THe energy at which to perform the scan.
 
+        Diode_motor = BTA2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
-        Diode_motor = BTA2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
+        scan_type_str = "FE_slit_alignment_Gas_cellA"
 
-        scan_type_str='FE_slit_alignment_Gas_cellA'
-
-
-    elif detector_location == 'Gas_cellB':
-        detector = qem12      # The detector to use for the scan.
-        det_range = '50 pC'     # The range to use for the scan
+    elif detector_location == "Gas_cellB":
+        detector = qem12  # The detector to use for the scan.
+        det_range = "50 pC"  # The range to use for the scan
         det_vals_reading = 5  # The values per reading to use.
-        det_avg_time = 0.1    # The averaging time to use.
-        det_int_time = 0.0004 # The integration time to use.
+        det_avg_time = 0.1  # The averaging time to use.
+        det_int_time = 0.0004  # The integration time to use.
 
-        Exit_Slit_hgap_motor = ExitSlitB.h_gap # The motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 500                # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitB.v_gap # The motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 500                # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitB.h_gap
+        )  # The motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 500  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitB.v_gap
+        )  # The motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 500  # The vertical gap opening to use
 
-        PGM_Energy_motor = PGM.Energy    #The motor required to move the PGM energy.
-        PGM_Energy_pos = 662             #THe energy at which to perform the scan.
+        PGM_Energy_motor = PGM.Energy  # The motor required to move the PGM energy.
+        PGM_Energy_pos = 662  # THe energy at which to perform the scan.
 
+        Diode_motor = BTB2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
-        Diode_motor = BTB2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
-
-        scan_type_str='FE_slit_alignment_Gas_cellB'
-
+        scan_type_str = "FE_slit_alignment_Gas_cellB"
 
     else:
         return None
 
     # Read the intial values for each motor that is to be moved.
-    initial_Und_gap =Und.position
-    initial_x_axis  =x_axis.position
-    initial_y_axis  =y_axis.position
+    initial_Und_gap = Und.position
+    initial_x_axis = x_axis.position
+    initial_y_axis = y_axis.position
 
     initial_FE_hgap_pos = FE_hgap_axis.position
     initial_FE_vgap_pos = FE_vgap_axis.position
 
-    if detector_location == 'Diagon':
-
+    if detector_location == "Diagon":
         initial_det_exp_time = detector.cam.acquire_time.value
         initial_det_aqu_period = detector.cam.acquire_period.value
         initial_det_num_images = detector.cam.num_images.value
@@ -1387,31 +1677,49 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
         initial_det_Mir_pos = det_Mir_motor.position
         initial_det_Yag_pos = det_Yag_motor.position
 
-    elif 'Gas_cell' in detector_location:
+    elif "Gas_cell" in detector_location:
+        initial_det_range = detector.em_range.get()  # The initial detector range
+        initial_det_vals_reading = (
+            detector.values_per_read.get()
+        )  # The initial values per reading.
+        initial_det_avg_time = (
+            detector.averaging_time.get()
+        )  # The initial averaging time.
+        initial_det_int_time = (
+            detector.integration_time.get()
+        )  # The initial integration time.
 
-        initial_det_range = detector.em_range.get()               # The initial detector range
-        initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-        initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-        initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+        initial_Exit_Slit_hgap_pos = (
+            Exit_Slit_hgap_motor.position
+        )  # The initial horizontal gap opening
+        initial_Exit_Slit_vgap_pos = (
+            Exit_Slit_vgap_motor.position
+        )  # The initial vertical gap opening
 
-        initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap opening
-        initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap opening
+        initial_PGM_Energy_pos = PGM_Energy_motor.position  # The initial photon energy.
+        initial_diode_pos = (
+            diode_motor.position
+        )  # The initial location of the diode motor.
 
-        initial_PGM_Energy_pos = PGM_Energy_motor.position         #The initial photon energy.
-        initial_diode_pos = diode_motor.position                   # The initial location of the diode motor.
+    # ADD A CLOSE SHUTTER CALL HERE
 
-    #ADD A CLOSE SHUTTER CALL HERE
+    # Move the values to the starting positions for the scan.
 
+    yield from mv(
+        Und,
+        Und_gap,
+        x_axis,
+        x_start,
+        y_axis,
+        y_start,
+        FE_hgap_axis,
+        FE_hgap_pos,
+        FE_vgap_axis,
+        FE_vgap_pos,
+    )
 
-
-
-    #Move the values to the starting positions for the scan.
-
-    yield from mv( Und,Und_gap,  x_axis,x_start,  y_axis, y_start,
-                  FE_hgap_axis,FE_hgap_pos,  FE_vgap_axis,FE_vgap_pos)
-
-    if detector_location == 'Diagon':
-        yield from mv (det_Mir_motor,det_Mir_pos,  det_Yag_motor,det_Yag_pos)
+    if detector_location == "Diagon":
+        yield from mv(det_Mir_motor, det_Mir_pos, det_Yag_motor, det_Yag_pos)
 
         detector.cam.acquire_time.put(det_exp_time)
         detector.cam.acquire_period.put(det_aqu_period)
@@ -1422,55 +1730,88 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
         detector.roi1.size.x.put(det_ROI1_Xsize)
         detector.roi1.min_xyz.min_y.put(det_ROI1_Ystart)
         detector.roi1.size.y.put(det_ROI1_Ysize)
-    elif 'Gas_cell' in detector_location:
-        yield from mv(Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,  Exit_Slit_vgap_motor,Exit_Slit_vgap_pos,
-                      PGM_Energy_motor,PGM_Energy_pos,   diode_motor,Diode_pos)
+    elif "Gas_cell" in detector_location:
+        yield from mv(
+            Exit_Slit_hgap_motor,
+            Exit_Slit_hgap_pos,
+            Exit_Slit_vgap_motor,
+            Exit_Slit_vgap_pos,
+            PGM_Energy_motor,
+            PGM_Energy_pos,
+            diode_motor,
+            Diode_pos,
+        )
 
-        detector.em_range.put(det_range)                    # The range to use for the scan
-        detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(det_int_time)         # The integration time to use.
+        detector.em_range.put(det_range)  # The range to use for the scan
+        detector.values_per_read.put(det_vals_reading)  # The values per reading to use.
+        detector.averaging_time.put(det_avg_time)  # The averaging time to use.
+        detector.integration_time.put(det_int_time)  # The integration time to use.
 
+    # ADD AN OPEN SHUTTER CALL HERE
 
-
-    #ADD AN OPEN SHUTTER CALL HERE
-
-    uid=yield from (scan_2D([detector],y_axis,y_start,y_end,y_stepsize,x_axis,x_start,x_end,x_stepsize,snake=True,
-                                scan_type=scan_type_str))
-
+    uid = yield from (
+        scan_2D(
+            [detector],
+            y_axis,
+            y_start,
+            y_end,
+            y_stepsize,
+            x_axis,
+            x_start,
+            x_end,
+            x_stepsize,
+            snake=True,
+            scan_type=scan_type_str,
+        )
+    )
 
     if uid is not None:
-        hdr=db[uid]
-        output=max_in_2D(uid)
+        hdr = db[uid]
+        output = max_in_2D(uid)
 
-        max_y=output[1]
-        max_x=output[2]
+        max_y = output[1]
+        max_x = output[2]
 
-        if (abs(max_x/initial_x_axis-1) <= accuracy_level) and (abs(max_y/initial_y_axis-1) <= accuracy_level):
-            print ("The fitted FE slit position at the ",str(detector_location),
-                   " detector is: FE_slit_h_center = ",max_x," FE_slit_v_center = ", max_y)
+        if (abs(max_x / initial_x_axis - 1) <= accuracy_level) and (
+            abs(max_y / initial_y_axis - 1) <= accuracy_level
+        ):
+            print(
+                "The fitted FE slit position at the ",
+                str(detector_location),
+                " detector is: FE_slit_h_center = ",
+                max_x,
+                " FE_slit_v_center = ",
+                max_y,
+            )
         else:
-            mv_center=False
-            print ("WARNING:: THE NEW FITTED POSITION IS DIFFERENT FROM THE NEW POSITION BY ",
-                   max(abs(max_x-initial_x_axis),abs(max_y-initial_y_axis) ),
-                   " (The fitted FE slit position at the ",detector_location,
-                   " detector is: FE_slit_h_center = ",max_x," FE_slit_v_center = ", max_y,
-                   ", the new position has not been set)")
+            mv_center = False
+            print(
+                "WARNING:: THE NEW FITTED POSITION IS DIFFERENT FROM THE NEW POSITION BY ",
+                max(abs(max_x - initial_x_axis), abs(max_y - initial_y_axis)),
+                " (The fitted FE slit position at the ",
+                detector_location,
+                " detector is: FE_slit_h_center = ",
+                max_x,
+                " FE_slit_v_center = ",
+                max_y,
+                ", the new position has not been set)",
+            )
 
     else:
-        max_x=None
-        max_y=None
-
+        max_x = None
+        max_y = None
 
     # Reset the values to the original position if 'return_all = True'
-    #ADD A CLOSE PHOTON SHUTTER LINE HERE.
+    # ADD A CLOSE PHOTON SHUTTER LINE HERE.
     if return_all is True:
+        yield from mv(
+            Und, initial_Und_gap, x_axis, initial_x_axis, y_axis, initial_y_axis
+        )
 
-
-        yield from mv( Und,initial_Und_gap,  x_axis,initial_x_axis,  y_axis, initial_y_axis)
-
-        if detector_location == 'Diagon':
-            yield from mv(det_Mir_motor,initial_det_Mir_pos,  det_Yag_motor,initial_det_Yag_pos)
+        if detector_location == "Diagon":
+            yield from mv(
+                det_Mir_motor, initial_det_Mir_pos, det_Yag_motor, initial_det_Yag_pos
+            )
 
             detector.cam.acquire_time.put(initial_det_exp_time)
             detector.cam.acquire_period.put(initial_det_aqu_period)
@@ -1482,32 +1823,43 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
             detector.roi1.min_xyz.min_y.put(initial_det_ROI_Ystart)
             detector.roi1.size.y.put(initial_det_ROI_Ysize)
 
-        elif 'Gas_cell' in detector_location:
-            yield from mv(Exit_Slit_hgap_motor,initial_Exit_Slit_hgap_pos,
-                          Exit_Slit_vgap_motor,initial_Exit_Slit_vgap_pos,
-                          PGM_Energy_motor,initial_PGM_Energy_pos,
-                          diode_motor,initial_diode_pos)
+        elif "Gas_cell" in detector_location:
+            yield from mv(
+                Exit_Slit_hgap_motor,
+                initial_Exit_Slit_hgap_pos,
+                Exit_Slit_vgap_motor,
+                initial_Exit_Slit_vgap_pos,
+                PGM_Energy_motor,
+                initial_PGM_Energy_pos,
+                diode_motor,
+                initial_diode_pos,
+            )
 
-            detector.em_range.put(initial_det_range)                    # The range to use for the scan
-            detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-            detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-            detector.integration_time.put(initial_det_int_time)         # The integration time to use.
-
-
+            detector.em_range.put(initial_det_range)  # The range to use for the scan
+            detector.values_per_read.put(
+                initial_det_vals_reading
+            )  # The values per reading to use.
+            detector.averaging_time.put(
+                initial_det_avg_time
+            )  # The averaging time to use.
+            detector.integration_time.put(
+                initial_det_int_time
+            )  # The integration time to use.
 
     if mv_center is True:
-        yield from mv(FE_hgap_axis,max_x,  FE_vgap_axis,max_y)
+        yield from mv(FE_hgap_axis, max_x, FE_vgap_axis, max_y)
     elif return_all is True:
-        yield from mv (FE_hgap_axis,initial_FE_hgap_pos,  FE_vgap_axis,initial_FE_vgap_pos)
+        yield from mv(
+            FE_hgap_axis, initial_FE_hgap_pos, FE_vgap_axis, initial_FE_vgap_pos
+        )
+
+    # ADD AN OPEN SHUTTER CALL HERE
+
+    return [max_x, max_y]
 
 
-    #ADD AN OPEN SHUTTER CALL HERE
-
-    return [max_x,max_y]
-
-
-def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=True):
-    '''
+def Mirror_alignment(axes="M1_Ry_M3_Ry", Branch="A", mv_optimum=True, return_all=True):
+    """
     Aligns the M1 and/or M3 mirrors to the exit slit but looking at the intensity and/or linewidth after
     the exit slit.
 
@@ -1537,253 +1889,333 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
         This allows for the routine to return all motors moved during the scan to their original locations.
         To use this set return_all = True.
 
-    '''
+    """
     # Define some parameters that are to be used in the scan, these are designed to be 'preset' and hence are not
     #'inputted' into the scan.
     Und = EPU1.gap
-    Und_gap = 35.5  #The gap to use for the undulator, together with the photon energy they ensure that the 'correct' detector
-                    #settings are used
+    Und_gap = 35.5  # The gap to use for the undulator, together with the photon energy they ensure that the 'correct' detector
+    # settings are used
 
-    FE_hgap_axis = FEslit.h_gap     # The front end horizontal gap motor
-    FE_hgap_pos  = 0.75              # The front end horizontal gap value
-    FE_vgap_axis = FEslit.v_gap     # The front end vertical gap motor
-    FE_vgap_pos  = 0.75              # The front end vertical gap value
+    FE_hgap_axis = FEslit.h_gap  # The front end horizontal gap motor
+    FE_hgap_pos = 0.75  # The front end horizontal gap value
+    FE_vgap_axis = FEslit.v_gap  # The front end vertical gap motor
+    FE_vgap_pos = 0.75  # The front end vertical gap value
 
-    PGM_Energy_motor = PGM.Energy    #The motor required to move the PGM energy.
-    PGM_Energy_pos = 662             #The photon energy at which to perform the scan.
+    PGM_Energy_motor = PGM.Energy  # The motor required to move the PGM energy.
+    PGM_Energy_pos = 662  # The photon energy at which to perform the scan.
 
-
-    det_range = '350 pC'     # The range to use for the scan
+    det_range = "350 pC"  # The range to use for the scan
     det_vals_reading = 5  # The values per reading to use.
-    det_avg_time = 0.1    # The averaging time to use.
-    det_int_time = 0.0004 # The integration time to use.
+    det_avg_time = 0.1  # The averaging time to use.
+    det_int_time = 0.0004  # The integration time to use.
 
-    accuracy_level = 0.1    #Used to compare the old and new "center" positions, if the difference is larger
-                            #than this it sends out a warning and does not update
+    accuracy_level = 0.1  # Used to compare the old and new "center" positions, if the difference is larger
+    # than this it sends out a warning and does not update
 
     if Branch == "A":
-        Exit_Slit_hgap_motor = ExitSlitA.h_gap # The motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 0                  # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitA.v_gap # The motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 5                  # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitA.h_gap
+        )  # The motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 0  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitA.v_gap
+        )  # The motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 5  # The vertical gap opening to use
 
-        Diode_motor = BTA2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
+        Diode_motor = BTA2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
-        detector = qem07      # The detector to use for the scan.
-
+        detector = qem07  # The detector to use for the scan.
 
     elif Branch == "B":
-        Exit_Slit_hgap_motor = ExitSlitB.h_gap # The motor required to move the horizontal exit slit
-        Exit_Slit_hgap_pos = 10                 # The horizontal gap opening to use
-        Exit_Slit_vgap_motor = ExitSlitB.v_gap # The motor required to move the vertical exit slit
-        Exit_Slit_vgap_pos = 10                 # The vertical gap opening to use
+        Exit_Slit_hgap_motor = (
+            ExitSlitB.h_gap
+        )  # The motor required to move the horizontal exit slit
+        Exit_Slit_hgap_pos = 10  # The horizontal gap opening to use
+        Exit_Slit_vgap_motor = (
+            ExitSlitB.v_gap
+        )  # The motor required to move the vertical exit slit
+        Exit_Slit_vgap_pos = 10  # The vertical gap opening to use
 
-        Diode_motor = BTB2diag.trans    #The motor to move the diode into position.
-        Diode_pos = -63                  #The position of the diode motor to be used during the scan
+        Diode_motor = BTB2diag.trans  # The motor to move the diode into position.
+        Diode_pos = -63  # The position of the diode motor to be used during the scan
 
-        detector = qem12      # The detector to use for the scan.
+        detector = qem12  # The detector to use for the scan.
 
     else:
         return None
-
 
     if axes == "M1_Ry_M3_Ry":
         if Branch == "A":
-            x_axis = M3.Ry                 # The x axis of the scan
-            x_start = -0.7085              # The x_axis start value of the scan
-            x_end   = -0.7035              # The x_axis end value of the scan
-            x_stepsize = -0.00002          # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.7085  # The x_axis start value of the scan
+            x_end = -0.7035  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M1.Ry               # The y axis of the scan
-            y_start = -3660              # The y_axis start value of the scan
-            y_end   = -3620              # The y_axis end value of the scan
-            y_stepsize =  2              # The y_axis step size of the scan
+            y_axis = M1.Ry  # The y axis of the scan
+            y_start = -3660  # The y_axis start value of the scan
+            y_end = -3620  # The y_axis end value of the scan
+            y_stepsize = 2  # The y_axis step size of the scan
 
         elif Branch == "B":
-            x_axis = M3.Ry                # The x axis of the scan
-            x_start = -0.719              # The x_axis start value of the scan
-            x_end   = -0.714              # The x_axis end value of the scan
-            x_stepsize = -0.00002         # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.719  # The x_axis start value of the scan
+            x_end = -0.714  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M1.Ry               # The y axis of the scan
-            y_start = -3640              # The y_axis start value of the scan
-            y_end   = -3600              # The y_axis end value of the scan
-            y_stepsize =  2              # The y_axis step size of the scan
+            y_axis = M1.Ry  # The y axis of the scan
+            y_start = -3640  # The y_axis start value of the scan
+            y_end = -3600  # The y_axis end value of the scan
+            y_stepsize = 2  # The y_axis step size of the scan
 
-
-        scan_type_str='Mirror_alignment_M1_RY_M3_RY_Branch_'+Branch
-
+        scan_type_str = "Mirror_alignment_M1_RY_M3_RY_Branch_" + Branch
 
     elif axes == "M3_X_M3_Ry":
         if Branch == "A":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.71              # The x_axis start value of the scan
-            x_end   = -0.695              # The x_axis end value of the scan
-            x_stepsize = -0.00002           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.71  # The x_axis start value of the scan
+            x_end = -0.695  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M3.X # The y axis of the scan
-            y_start = -0.3              # The y_axis start value of the scan
-            y_end   = 1.5               # The y_axis end value of the scan
-            y_stepsize = 0.1            # The y_axis step size of the scan
+            y_axis = M3.X  # The y axis of the scan
+            y_start = -0.3  # The y_axis start value of the scan
+            y_end = 1.5  # The y_axis end value of the scan
+            y_stepsize = 0.1  # The y_axis step size of the scan
 
         elif Branch == "B":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.726               # The x_axis start value of the scan
-            x_end   = -0.71                # The x_axis end value of the scan
-            x_stepsize = -0.0001           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.726  # The x_axis start value of the scan
+            x_end = -0.71  # The x_axis end value of the scan
+            x_stepsize = -0.0001  # The x_axis step size of the scan
 
-            y_axis = M3.X # The y axis of the scan
-            y_start = 1.1                # The y_axis start value of the scan
-            y_end   = 3                  # The y_axis end value of the scan
-            y_stepsize = 0.05            # The y_axis step size of the scan
+            y_axis = M3.X  # The y axis of the scan
+            y_start = 1.1  # The y_axis start value of the scan
+            y_end = 3  # The y_axis end value of the scan
+            y_stepsize = 0.05  # The y_axis step size of the scan
 
-        scan_type_str='Mirror_alignment_M3_X_M3_RY_Branch_'+Branch
+        scan_type_str = "Mirror_alignment_M3_X_M3_RY_Branch_" + Branch
 
     elif axes == "M3_Z_M3_Ry":
         if Branch == "A":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.7085              # The x_axis start value of the scan
-            x_end   = -0.7035             # The x_axis end value of the scan
-            x_stepsize = -0.00002           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.7085  # The x_axis start value of the scan
+            x_end = -0.7035  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M3.Z # The y axis of the scan
-            y_start = -2.5              # The y_axis start value of the scan
-            y_end   = 2.5               # The y_axis end value of the scan
-            y_stepsize = 0.25            # The y_axis step size of the scan
+            y_axis = M3.Z  # The y axis of the scan
+            y_start = -2.5  # The y_axis start value of the scan
+            y_end = 2.5  # The y_axis end value of the scan
+            y_stepsize = 0.25  # The y_axis step size of the scan
 
         elif Branch == "B":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.7085              # The x_axis start value of the scan
-            x_end   = -0.7035             # The x_axis end value of the scan
-            x_stepsize = -0.00002           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.7085  # The x_axis start value of the scan
+            x_end = -0.7035  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M3.Z # The y axis of the scan
-            y_start = -2.5              # The y_axis start value of the scan
-            y_end   = 2.5               # The y_axis end value of the scan
-            y_stepsize = 0.25            # The y_axis step size of the scan
+            y_axis = M3.Z  # The y axis of the scan
+            y_start = -2.5  # The y_axis start value of the scan
+            y_end = 2.5  # The y_axis end value of the scan
+            y_stepsize = 0.25  # The y_axis step size of the scan
 
-        scan_type_str='Mirror_alignment_M3_Z_M3_RY_Branch_'+Branch
-
+        scan_type_str = "Mirror_alignment_M3_Z_M3_RY_Branch_" + Branch
 
     elif axes == "M3_Rz_M3_Ry":
         if Branch == "A":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.7085              # The x_axis start value of the scan
-            x_end   = -0.7035              # The x_axis end value of the scan
-            x_stepsize = -0.00002           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.7085  # The x_axis start value of the scan
+            x_end = -0.7035  # The x_axis end value of the scan
+            x_stepsize = -0.00002  # The x_axis step size of the scan
 
-            y_axis = M3.Rz               # The y axis of the scan
-            y_start = -1.5              # The y_axis start value of the scan
-            y_end   = 0.75               # The y_axis end value of the scan
-            y_stepsize = 0.25            # The y_axis step size of the scan
+            y_axis = M3.Rz  # The y axis of the scan
+            y_start = -1.5  # The y_axis start value of the scan
+            y_end = 0.75  # The y_axis end value of the scan
+            y_stepsize = 0.25  # The y_axis step size of the scan
 
         elif Branch == "B":
-            x_axis = M3.Ry # The x axis of the scan
-            x_start = -0.735              # The x_axis start value of the scan
-            x_end   = -0.70              # The x_axis end value of the scan
-            x_stepsize = -0.0005           # The x_axis step size of the scan
+            x_axis = M3.Ry  # The x axis of the scan
+            x_start = -0.735  # The x_axis start value of the scan
+            x_end = -0.70  # The x_axis end value of the scan
+            x_stepsize = -0.0005  # The x_axis step size of the scan
 
-            y_axis = M3.Rz               # The y axis of the scan
-            y_start = -1.5              # The y_axis start value of the scan
-            y_end   = 1.5               # The y_axis end value of the scan
-            y_stepsize = 0.25            # The y_axis step size of the scan
+            y_axis = M3.Rz  # The y axis of the scan
+            y_start = -1.5  # The y_axis start value of the scan
+            y_end = 1.5  # The y_axis end value of the scan
+            y_stepsize = 0.25  # The y_axis step size of the scan
 
-        scan_type_str='Mirror_alignment_M3_Rz_M3_Ry_Branch_'+Branch
-
+        scan_type_str = "Mirror_alignment_M3_Rz_M3_Ry_Branch_" + Branch
 
     else:
         return None
 
+    # Save the initial values of all moved motors so that they can be reset.
+    initial_Und_gap = Und.position  # The initial Undulator position.
+    initial_PGM_Energy_pos = PGM_Energy_motor.position  # The initial PGM energy.
+    initial_det_range = detector.em_range.get()  # The initial detector range.
+    initial_det_vals_reading = (
+        detector.values_per_read.get()
+    )  # The initial values per reading.
+    initial_det_avg_time = detector.averaging_time.get()  # The initial averaging time.
+    initial_det_int_time = (
+        detector.integration_time.get()
+    )  # The initial integration time.
+    initial_x_axis_pos = x_axis.position  # The initial x_axis position.
+    initial_y_axis_pos = y_axis.position  # The initial y_axis position.
+    initial_Exit_Slit_vgap_pos = (
+        Exit_Slit_vgap_motor.position
+    )  # The initial vertical gap for the exit slit.
+    initial_Exit_Slit_hgap_pos = (
+        Exit_Slit_hgap_motor.position
+    )  # The initial horizontal gap for the exit slit.
+    initial_FE_hgap_pos = (
+        FE_hgap_axis.position
+    )  # The initial front end horizontal gap value.
+    initial_FE_vgap_pos = (
+        FE_vgap_axis.position
+    )  # The initial front end vertical gap value.
+    initial_Diode_pos = Diode_motor.position  # The initial location of the diode motor.
 
-    #Save the initial values of all moved motors so that they can be reset.
-    initial_Und_gap = Und.position                             # The initial Undulator position.
-    initial_PGM_Energy_pos = PGM_Energy_motor.position         # The initial PGM energy.
-    initial_det_range = detector.em_range.get()               # The initial detector range.
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
-    initial_x_axis_pos = x_axis.position                       # The initial x_axis position.
-    initial_y_axis_pos = y_axis.position                       # The initial y_axis position.
-    initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap for the exit slit.
-    initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap for the exit slit.
-    initial_FE_hgap_pos  = FE_hgap_axis.position              # The initial front end horizontal gap value.
-    initial_FE_vgap_pos  = FE_vgap_axis.position              # The initial front end vertical gap value.
-    initial_Diode_pos = Diode_motor.position                   # The initial location of the diode motor.
+    # Set the values to the correct initial states here.
 
-    #Set the values to the correct initial states here.
+    # ADD A CLOSE SHUTTER CALL HERE.
+    yield from mv(
+        Und,
+        Und_gap,
+        x_axis,
+        x_start,
+        y_axis,
+        y_start,
+        Exit_Slit_vgap_motor,
+        Exit_Slit_vgap_pos,
+        Exit_Slit_hgap_motor,
+        Exit_Slit_hgap_pos,
+        PGM_Energy_motor,
+        PGM_Energy_pos,
+        FE_hgap_axis,
+        FE_hgap_pos,
+        FE_vgap_axis,
+        FE_vgap_pos,
+        Diode_motor,
+        Diode_pos,
+    )
 
-    #ADD A CLOSE SHUTTER CALL HERE.
-    yield from mv( Und,Und_gap,  x_axis,x_start,  y_axis, y_start, Exit_Slit_vgap_motor,Exit_Slit_vgap_pos,
-                   Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,  PGM_Energy_motor,PGM_Energy_pos,
-                   FE_hgap_axis,FE_hgap_pos,    FE_vgap_axis,FE_vgap_pos,   Diode_motor,Diode_pos)
+    detector.em_range.put(det_range)  # The range to use for the scan
+    detector.values_per_read.put(det_vals_reading)  # The values per reading to use.
+    detector.averaging_time.put(det_avg_time)  # The averaging time to use.
+    detector.integration_time.put(det_int_time)  # The integration time to use.
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
-
-    #ADD AN OPEN SHUTTER CALL HERE.
+    # ADD AN OPEN SHUTTER CALL HERE.
 
     # Run the scan
-    uid=yield from (scan_2D([detector],y_axis,y_start,y_end,y_stepsize,x_axis,x_start,x_end,x_stepsize,snake=False,
-                                scan_type=scan_type_str))
-
+    uid = yield from (
+        scan_2D(
+            [detector],
+            y_axis,
+            y_start,
+            y_end,
+            y_stepsize,
+            x_axis,
+            x_start,
+            x_end,
+            x_stepsize,
+            snake=False,
+            scan_type=scan_type_str,
+        )
+    )
 
     if uid is not None:
-        hdr=db[uid]
-        output=max_in_2D(hdr.start.scan_id)
-        print (output)
+        hdr = db[uid]
+        output = max_in_2D(hdr.start.scan_id)
+        print(output)
 
-        max_y=output[0]
-        max_x=output[1]
+        max_y = output[0]
+        max_x = output[1]
 
-
-        if abs(max_x/initial_x_axis_pos-1) <= accuracy_level and abs(max_y/initial_y_axis_pos-1) <= accuracy_level:
-            print ("The fitted x axis positions at the ",Branch," ",x_axis_motor.name, " motor are: ",max_x,
-                   ". The fitted y axis positions at the ",Branch," ",y_axis_motor.name, " motor are: ",max_y)
+        if (
+            abs(max_x / initial_x_axis_pos - 1) <= accuracy_level
+            and abs(max_y / initial_y_axis_pos - 1) <= accuracy_level
+        ):
+            print(
+                "The fitted x axis positions at the ",
+                Branch,
+                " ",
+                x_axis_motor.name,
+                " motor are: ",
+                max_x,
+                ". The fitted y axis positions at the ",
+                Branch,
+                " ",
+                y_axis_motor.name,
+                " motor are: ",
+                max_y,
+            )
 
         else:
-            mv_optimum=False
-            print ("WARNING:: THE NEW FITTED POSITION IS DIFFERENT FROM THE OLD POSITION BY ",max(abs(max_x-initial_x_axis_pos),
-                    abs(max_y-initial_y_axis_pos) ),"(The fitted x axis positions at the ",Branch," ",x_axis_motor.name, " motor are: ",max_x,
-                   ". The fitted y axis positions at the ",Branch," ",y_axis_motor.name, " motor are: ",max_y,". The new position has not been set")
+            mv_optimum = False
+            print(
+                "WARNING:: THE NEW FITTED POSITION IS DIFFERENT FROM THE OLD POSITION BY ",
+                max(abs(max_x - initial_x_axis_pos), abs(max_y - initial_y_axis_pos)),
+                "(The fitted x axis positions at the ",
+                Branch,
+                " ",
+                x_axis_motor.name,
+                " motor are: ",
+                max_x,
+                ". The fitted y axis positions at the ",
+                Branch,
+                " ",
+                y_axis_motor.name,
+                " motor are: ",
+                max_y,
+                ". The new position has not been set",
+            )
 
     else:
-       output=None
-       max_x=None
-       max_y=None
-
-
+        output = None
+        max_x = None
+        max_y = None
 
     # Reset the values to the original position if 'return_all = True'
-    #ADD A CLOSE PHOTON SHUTTER LINE HERE.
+    # ADD A CLOSE PHOTON SHUTTER LINE HERE.
     if return_all is True:
-        yield from mv( Und,initial_Und_gap,   Exit_Slit_vgap_motor,initial_Exit_Slit_vgap_pos,
-                       Exit_Slit_hgap_motor,initial_Exit_Slit_hgap_pos,  PGM_Energy_motor,initial_PGM_Energy_pos,
-                       FE_hgap_axis,initial_FE_hgap_pos,    FE_vgap_axis,initial_FE_vgap_pos,   Diode_motor,initial_Diode_pos   )
+        yield from mv(
+            Und,
+            initial_Und_gap,
+            Exit_Slit_vgap_motor,
+            initial_Exit_Slit_vgap_pos,
+            Exit_Slit_hgap_motor,
+            initial_Exit_Slit_hgap_pos,
+            PGM_Energy_motor,
+            initial_PGM_Energy_pos,
+            FE_hgap_axis,
+            initial_FE_hgap_pos,
+            FE_vgap_axis,
+            initial_FE_vgap_pos,
+            Diode_motor,
+            initial_Diode_pos,
+        )
 
-        detector.em_range.put(initial_det_range)                    # The range to use for the scan
-        detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(initial_det_int_time)         # The integration time to use.
-
-
+        detector.em_range.put(initial_det_range)  # The range to use for the scan
+        detector.values_per_read.put(
+            initial_det_vals_reading
+        )  # The values per reading to use.
+        detector.averaging_time.put(initial_det_avg_time)  # The averaging time to use.
+        detector.integration_time.put(
+            initial_det_int_time
+        )  # The integration time to use.
 
     if mv_optimum is True:
-        yield from mv( x_axis,max_x,  y_axis, max_y)
+        yield from mv(x_axis, max_x, y_axis, max_y)
     elif return_all is True:
-        yield from mv ( x_axis,initial_x_axis_pos,  y_axis, initial_y_axis_pos)
+        yield from mv(x_axis, initial_x_axis_pos, y_axis, initial_y_axis_pos)
 
-
-    #ADD AN OPEN SHUTTER CALL HERE
+    # ADD AN OPEN SHUTTER CALL HERE
 
     return output
 
 
-
-def M1_M3_alignment(Branch='A',mv_optimum=False,return_all=True):
-    '''
+def M1_M3_alignment(Branch="A", mv_optimum=False, return_all=True):
+    """
     Aligns the M1 and M3 mirrorsby stepping through the combinations possible with Mirror_alignment.
 
     This scan is used to find the optimal location of bpth M1 and M3, it runs a series of Mirror_Alignment scans over
@@ -1801,17 +2233,42 @@ def M1_M3_alignment(Branch='A',mv_optimum=False,return_all=True):
         This allows for the routine to return all motors moved during the scan to their original locations.
         To use this set return_all = True.
 
-    '''
+    """
 
-    output_M1_Ry=yield from Mirror_alignment(axes='M1_Ry_M3_Ry',Branch=Branch,mv_optimum=mv_optimum,return_all=return_all)
-    output_M3_X=yield from Mirror_alignment(axes='M3_X_M3_Ry',Branch=Branch,mv_optimum=mv_optimum,return_all=return_all)
-    output_M3_Z=yield from Mirror_alignment(axes='M3_Z_M3_Ry',Branch=Branch,mv_optimum=mv_optimum,return_all=return_all)
-    output_M3_Rz=yield from Mirror_alignment(axes='M3_Rz_M3_Ry',Branch=Branch,mv_optimum=mv_optimum,return_all=return_all)
+    output_M1_Ry = yield from Mirror_alignment(
+        axes="M1_Ry_M3_Ry", Branch=Branch, mv_optimum=mv_optimum, return_all=return_all
+    )
+    output_M3_X = yield from Mirror_alignment(
+        axes="M3_X_M3_Ry", Branch=Branch, mv_optimum=mv_optimum, return_all=return_all
+    )
+    output_M3_Z = yield from Mirror_alignment(
+        axes="M3_Z_M3_Ry", Branch=Branch, mv_optimum=mv_optimum, return_all=return_all
+    )
+    output_M3_Rz = yield from Mirror_alignment(
+        axes="M3_Rz_M3_Ry", Branch=Branch, mv_optimum=mv_optimum, return_all=return_all
+    )
 
-    print("M1_Ry, M3_Ry results are: ",output_M1_Ry," ([[amp pos M3_Ry,amp pos M1_Ry],[LW pos M3_Ry,LW pos M1_Ry])")
-    print("M3_X, M3_Ry results are: ",output_M3_X," ([[amp pos M3_Ry,amp pos M3_X],[LW pos M3_Ry,LW pos M3_X])")
-    print("M3_Z, M3_Ry results are: ",output_M3_Z," ([[amp pos M3_Ry,amp pos M3_Z],[LW pos M3_Ry,LW pos M3_Z])")
-    print("M3_Rz, M3_Ry results are: ",output_M3_Rz," ([[amp pos M3_Ry,amp pos M3_Rz],[LW pos M3_Ry,LW pos M3_Rz])")
+    print(
+        "M1_Ry, M3_Ry results are: ",
+        output_M1_Ry,
+        " ([[amp pos M3_Ry,amp pos M1_Ry],[LW pos M3_Ry,LW pos M1_Ry])",
+    )
+    print(
+        "M3_X, M3_Ry results are: ",
+        output_M3_X,
+        " ([[amp pos M3_Ry,amp pos M3_X],[LW pos M3_Ry,LW pos M3_X])",
+    )
+    print(
+        "M3_Z, M3_Ry results are: ",
+        output_M3_Z,
+        " ([[amp pos M3_Ry,amp pos M3_Z],[LW pos M3_Ry,LW pos M3_Z])",
+    )
+    print(
+        "M3_Rz, M3_Ry results are: ",
+        output_M3_Rz,
+        " ([[amp pos M3_Ry,amp pos M3_Rz],[LW pos M3_Ry,LW pos M3_Rz])",
+    )
+
 
 ###
 ###UTILITY FUNCTIONS
@@ -1819,7 +2276,7 @@ def M1_M3_alignment(Branch='A',mv_optimum=False,return_all=True):
 
 
 def ESM_setup_hints(DETS_str):
-    '''
+    """
     This function is used to set the hints to a sub-set of the total value of possible attributes.
 
     This function uses the 'set_primary' attribute of our detectors in order to change the list of
@@ -1850,23 +2307,23 @@ def ESM_setup_hints(DETS_str):
 
     DETS : Str, output
         An output string that returns a list of detectors from the list
-    '''
-    #create the empty DETS list.
-    DETS=""
+    """
+    # create the empty DETS list.
+    DETS = ""
 
-    #split the detectors str into a list of detector strs
-    DET_list=DETS_str.split(',')
+    # split the detectors str into a list of detector strs
+    DET_list = DETS_str.split(",")
 
-    if DET_list[-1].startswith('@'):
-        #if the detector list is of format 2 type.
-        Channel_list=DET_list[-1]
-        DET_list=DET_list[:-1]
+    if DET_list[-1].startswith("@"):
+        # if the detector list is of format 2 type.
+        Channel_list = DET_list[-1]
+        DET_list = DET_list[:-1]
 
-        #set the hints to the unpacked detector list.
+        # set the hints to the unpacked detector list.
         for i, DET_str in enumerate(DET_list):
             if i > 0:
-                DETS += ','
-            DETS += DET_str.partition('@')[0]
+                DETS += ","
+            DETS += DET_str.partition("@")[0]
             # DAMA (mrakitin) 20180606: channel_list_unpack() returns
             # a list of values, e.g:
             #   ['qem12.current1.mean_value',
@@ -1877,26 +2334,25 @@ def ESM_setup_hints(DETS_str):
             # Also, we need to cut the name of the device
             # ('qem12' in the example) from the string.
             for channel in channel_list_unpack(DET_str + Channel_list, dot=True):
-                getattr(ip.user_ns[DET_str], channel.partition('.')[-1]).kind = 'hinted'
+                getattr(ip.user_ns[DET_str], channel.partition(".")[-1]).kind = "hinted"
 
     else:
-        #if the detector list is of format 1 type.
+        # if the detector list is of format 1 type.
 
-        #set the hints to the unpacked detector list.
+        # set the hints to the unpacked detector list.
         for i, DET_str in enumerate(DET_list):
             if i > 0:
-                DETS += ','
-            DETS += DET_str.partition('@')[0]
-            det = ip.user_ns[DET_str.partition('@')[0]]
+                DETS += ","
+            DETS += DET_str.partition("@")[0]
+            det = ip.user_ns[DET_str.partition("@")[0]]
             # set everytrhing unhinted
             for c in det.read_attrs:
-                getattr(det, c).kind = 'normal'
+                getattr(det, c).kind = "normal"
             # hint what we asked for
             for c in channel_list_unpack(DET_str, dot=True):
-                getattr(det, c.partition('.')[-1]).kind = 'hinted'
+                getattr(det, c.partition(".")[-1]).kind = "hinted"
 
     return DETS
-
 
 
 def _get_obj_fields(fields):
@@ -1912,16 +2368,18 @@ def _get_obj_fields(fields):
             try:
                 field_list = sorted(field.describe().keys())
             except AttributeError:
-                raise ValueError("Fields must be strings or objects with a "
-                                 "'describe' method that return a dict.")
+                raise ValueError(
+                    "Fields must be strings or objects with a "
+                    "'describe' method that return a dict."
+                )
             string_fields.extend(field_list)
     return string_fields
 
 
-
-
-def spiral_square_pattern(x_motor, y_motor, x_centre, y_centre, x_range, y_range, x_num,y_num):
-    '''Square spiral scan, centered around (x_start, y_start)
+def spiral_square_pattern(
+    x_motor, y_motor, x_centre, y_centre, x_range, y_range, x_num, y_num
+):
+    """Square spiral scan, centered around (x_start, y_start)
     Parameters
     ----------
     x_motor : object, optional
@@ -1943,99 +2401,103 @@ def spiral_square_pattern(x_motor, y_motor, x_centre, y_centre, x_range, y_range
     Returns
     -------
     cyc : cycler
-    '''
-
+    """
 
     x_points, y_points = [], []
 
-    if x_num%2==0:
-        num_st= 2
-        if y_num%2==1:
-           y_num+=1
+    if x_num % 2 == 0:
+        num_st = 2
+        if y_num % 2 == 1:
+            y_num += 1
 
-        offset=0.5
+        offset = 0.5
 
     else:
-        num_st=1
-        if y_num%2==0:
-            y_num+=1
+        num_st = 1
+        if y_num % 2 == 0:
+            y_num += 1
 
-        offset=0
+        offset = 0
 
         x_points.append(x_centre)
         y_points.append(y_centre)
 
-    #print( 'x_range = '+str(x_range)+', x_num = '+str(x_num)  )
-    #print( 'y_range = '+str(y_range)+', y_num = '+str(y_num)  )
+    # print( 'x_range = '+str(x_range)+', x_num = '+str(x_num)  )
+    # print( 'y_range = '+str(y_range)+', y_num = '+str(y_num)  )
 
-    delta_x = x_range/(x_num-1)
-    delta_y = y_range/(y_num-1)
+    delta_x = x_range / (x_num - 1)
+    delta_y = y_range / (y_num - 1)
 
+    num_ring = max(x_num, y_num)
 
+    x_max = x_centre + delta_x * (x_num - 1) / 2
+    x_min = x_centre - delta_x * (x_num - 1) / 2
 
-    num_ring = max(x_num,y_num)
+    y_max = y_centre + delta_y * (y_num - 1) / 2
+    y_min = y_centre - delta_y * (y_num - 1) / 2
 
-    x_max=x_centre + delta_x * (x_num-1)/2
-    x_min=x_centre - delta_x * (x_num-1)/2
-
-    y_max=y_centre + delta_y * (y_num-1)/2
-    y_min=y_centre - delta_y * (y_num-1)/2
-
-
-
-
-    #print ( 'num_ring = '+str(num_ring)  )
-    for n,i_ring in enumerate(range(num_st, num_ring+1,2)):
-        #print ('x_centre: '+str(x_centre)+', delta_x: '+str(delta_x))
-        #print ('y_centre: '+str(y_centre)+', delta_y: '+str(delta_y))
-        x_ring_max=x_centre + delta_x * (n+offset)
-        y_ring_max=y_centre + delta_y * (n+offset)
-        x_ring_min=x_centre - delta_x * (n+offset)
-        y_ring_min=y_centre - delta_y * (n+offset)
-        #print('i_ring = '+str(i_ring)+', x_ring_min= '+str(x_ring_min)+', y_ring_min= '+str(y_ring_min)  )
+    # print ( 'num_ring = '+str(num_ring)  )
+    for n, i_ring in enumerate(range(num_st, num_ring + 1, 2)):
+        # print ('x_centre: '+str(x_centre)+', delta_x: '+str(delta_x))
+        # print ('y_centre: '+str(y_centre)+', delta_y: '+str(delta_y))
+        x_ring_max = x_centre + delta_x * (n + offset)
+        y_ring_max = y_centre + delta_y * (n + offset)
+        x_ring_min = x_centre - delta_x * (n + offset)
+        y_ring_min = y_centre - delta_y * (n + offset)
+        # print('i_ring = '+str(i_ring)+', x_ring_min= '+str(x_ring_min)+', y_ring_min= '+str(y_ring_min)  )
 
         for n in range(1, i_ring):
-            x = x_ring_min+delta_x*(n-1)
+            x = x_ring_min + delta_x * (n - 1)
             y = y_ring_min
 
-            if ( (x <= x_max) and (x>= x_min) and (y<=y_max) and (y>=y_min)     ):
+            if (x <= x_max) and (x >= x_min) and (y <= y_max) and (y >= y_min):
                 x_points.append(x)
                 y_points.append(y)
 
         for n in range(1, i_ring):
-            y = y_ring_min+delta_y*(n-1)
+            y = y_ring_min + delta_y * (n - 1)
             x = x_ring_max
 
-            if ( (x <= x_max) and (x>= x_min) and (y<=y_max) and (y>=y_min)     ):
+            if (x <= x_max) and (x >= x_min) and (y <= y_max) and (y >= y_min):
                 x_points.append(x)
                 y_points.append(y)
 
-
         for n in range(1, i_ring):
-            x = x_ring_max-delta_x*(n-1)
+            x = x_ring_max - delta_x * (n - 1)
             y = y_ring_max
 
-            if ( (x <= x_max) and (x>= x_min) and (y<=y_max) and (y>=y_min)     ):
+            if (x <= x_max) and (x >= x_min) and (y <= y_max) and (y >= y_min):
                 x_points.append(x)
                 y_points.append(y)
 
         for n in range(1, i_ring):
-            y = y_ring_max-delta_y*(n-1)
+            y = y_ring_max - delta_y * (n - 1)
             x = x_ring_min
 
-            if ( (x <= x_max) and (x>= x_min) and (y<=y_max) and (y>=y_min)     ):
+            if (x <= x_max) and (x >= x_min) and (y <= y_max) and (y >= y_min):
                 x_points.append(x)
                 y_points.append(y)
-
-
 
     cyc = cycler(x_motor, x_points)
     cyc += cycler(y_motor, y_points)
     return cyc
 
-def spiral_square(detectors, x_motor, y_motor, x_centre, y_centre, x_range,
-                  y_range, x_num, y_num, *, per_step=None, md=None):
-    '''Absolute square spiral scan, centered around (x_centre, y_centre)
+
+def spiral_square(
+    detectors,
+    x_motor,
+    y_motor,
+    x_centre,
+    y_centre,
+    x_range,
+    y_range,
+    x_num,
+    y_num,
+    *,
+    per_step=None,
+    md=None,
+):
+    """Absolute square spiral scan, centered around (x_centre, y_centre)
     Parameters
     ----------
     detectors : list
@@ -2068,24 +2530,401 @@ def spiral_square(detectors, x_motor, y_motor, x_centre, y_centre, x_range,
     :func:`bluesky.plans.relative_spiral`
     :func:`bluesky.plans.spiral_fermat`
     :func:`bluesky.plans.relative_spiral_fermat`
-    '''
-    pattern_args = dict(x_motor=x_motor, y_motor=y_motor, x_centre=x_centre,
-                        y_centre=y_centre, x_range=x_range, y_range=y_range,
-                        x_num = x_num, y_num = y_num)
+    """
+    pattern_args = dict(
+        x_motor=x_motor,
+        y_motor=y_motor,
+        x_centre=x_centre,
+        y_centre=y_centre,
+        x_range=x_range,
+        y_range=y_range,
+        x_num=x_num,
+        y_num=y_num,
+    )
     cyc = spiral_square_pattern(**pattern_args)
 
     # Before including pattern_args in metadata, replace objects with reprs.
-    pattern_args['x_motor'] = repr(x_motor)
-    pattern_args['y_motor'] = repr(y_motor)
-    _md = {'plan_args': {'detectors': list(map(repr, detectors)),
-                         'x_motor': repr(x_motor), 'y_motor': repr(y_motor),
-                         'x_centre': x_centre, 'y_centre': y_centre,
-                         'x_range': x_range, 'y_range': y_range,
-                         'x_num': x_num, 'y_num': y_num,
-                         'per_step': repr(per_step)},
-           'plan_name': 'spiral_square',
-           'plan_pattern': 'spiral_square',
-          }
+    pattern_args["x_motor"] = repr(x_motor)
+    pattern_args["y_motor"] = repr(y_motor)
+    _md = {
+        "plan_args": {
+            "detectors": list(map(repr, detectors)),
+            "x_motor": repr(x_motor),
+            "y_motor": repr(y_motor),
+            "x_centre": x_centre,
+            "y_centre": y_centre,
+            "x_range": x_range,
+            "y_range": y_range,
+            "x_num": x_num,
+            "y_num": y_num,
+            "per_step": repr(per_step),
+        },
+        "plan_name": "spiral_square",
+        "plan_pattern": "spiral_square",
+    }
     _md.update(md or {})
 
     return (yield from scan_nd(detectors, cyc, per_step=per_step, md=_md))
+
+
+def _sample(signal, n, delay):
+    """Read ``signal`` ``n`` times spaced by ``delay``.
+
+    Returns ``(mean, std)``. Plan-message generator.
+    """
+    vals = np.empty(n)
+    for i in range(n):
+        yield from bps.sleep(delay)
+        vals[i] = yield from bps.rd(signal)
+    return float(np.mean(vals)), float(np.std(vals))
+
+
+def _step_and_sample(motor, target, signal, settle, n, delay):
+    """Move ``motor`` to ``target``, settle, then sample.
+
+    Returns ``(mean, std)``.
+    """
+    yield from bps.mv(motor, target)
+    yield from bps.sleep(settle)
+    avg, std = yield from _sample(signal, n, delay)
+    return avg, std
+
+
+def m3_adjust(
+    *,
+    motor=M3.Ry,
+    signal=qem08.current1.mean_value,
+    diag=M4AUdiag.trans,
+    diag_in=-6,
+    diag_out=2,
+    step=5e-5,
+    n_samples=10,
+    sample_delay=0.1,
+    settle_time=3.0,
+    max_insignificant=5,
+    csv_path=None,
+    eng=None,
+    pgm_energy=None,
+    pgm_focus=None,
+):
+    """Hill-climb ``motor`` to maximize ``signal``.
+
+    Parameters
+    ----------
+    motor : ophyd motor-like (e.g. ``M3.Ry``)
+    signal : ophyd Signal-like (e.g. ``qem08.current1.mean_value``)
+    diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
+    diag_in, diag_out : float
+        Diagnostic insert/retract positions.
+    step : float
+        motor step size.
+    n_samples, sample_delay : int, float
+        Per-measurement read count and inter-read delay.
+    settle_time : float
+        Sleep after each motor move before sampling.
+    max_insignificant : int
+        Number of insignificant direction-search steps before giving up.
+    csv_path : str or None
+        If set, append one row at completion (success or give-up).
+    eng, pgm_energy, pgm_focus : float or None
+        Pass-through values for the CSV row.
+
+    Returns
+    -------
+    (float, float)
+        ``(final_motor_position, final_signal_average)``. The signal
+        average is the last ``Au1_avg`` value computed by the algorithm
+        (matching the value written to ``csv_path``'s 4th column).
+    """
+
+    # final_pos and final_au are populated by _body() and consumed by the
+    # CSV-write tail after finalize_wrapper completes.
+    final = {"pos": None, "au": None}
+
+    def _retract_diag():
+        yield from bps.mv(diag, diag_out)
+
+    def _body():
+        # --- backlash unwind ---
+        m3 = yield from bps.rd(motor)
+        print("M3_Ry start (pre-backlash) = {}".format(m3))
+        yield from bps.mv(motor, m3 - 2 * step)
+        yield from bps.mv(motor, m3 + 2 * step)
+        yield from bps.sleep(settle_time)
+        m3_0 = yield from bps.rd(motor)
+        print("M3_Ry_0 (after backlash unwind) = {}".format(m3_0))
+        m3 = m3_0
+
+        # --- insert diag, baseline sample ---
+        yield from bps.mv(diag, diag_in)
+        au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+
+        # --- first +step probe ---
+        m3 = m3 + step
+        au1_avg, au1_std = yield from _step_and_sample(
+            motor, m3, signal, settle_time, n_samples, sample_delay
+        )
+        print("M3_Ry after first +step probe = {}".format((yield from bps.rd(motor))))
+
+        # --- direction search loop ---
+        direction = 0.0
+        dir_found = False
+        insignificant = 0
+        gave_up = False
+
+        while not dir_found:
+            threshold = (au0_std + au1_std) / 2
+            print(
+                "direction-search: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+                "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                    M3_Ry=(yield from bps.rd(motor)),
+                    Au0_avg=au0_avg,
+                    Au0_std=au0_std,
+                    Au1_avg=au1_avg,
+                    Au1_std=au1_std,
+                    diff=(au1_avg - au0_avg),
+                    threshold=threshold,
+                )
+            )
+            if abs(au1_avg - au0_avg) > threshold:
+                direction = +1.0 if (au1_avg - au0_avg) > 0 else -1.0
+                dir_found = True
+            else:
+                m3 = m3 + step
+                au0_avg, au0_std = au1_avg, au1_std
+                # NOTE: original sleeps BEFORE the move inside this branch
+                # (line 160-161). Preserved literally.
+                yield from bps.sleep(settle_time)
+                yield from bps.mv(motor, m3)
+                print(
+                    "M3_Ry after insignificant-step move = {}".format(
+                        (yield from bps.rd(motor))
+                    )
+                )
+                au1_avg, au1_std = yield from _sample(signal, n_samples, sample_delay)
+                insignificant += 1
+                print(
+                    "one more insignificant step during direction search, tot: ",
+                    insignificant,
+                )
+                if insignificant == max_insignificant:
+                    # FIX vs. original: genuine restore + early return.
+                    yield from bps.mv(motor, m3_0)
+                    print("could not adjust M3")
+                    gave_up = True
+                    dir_found = True
+
+        if gave_up:
+            final["pos"] = yield from bps.rd(motor)
+            final["au"] = au1_avg
+            return  # diag retract happens in finalize_wrapper
+
+        print("determined direction: ", direction)
+
+        # --- seed sample after direction is known ---
+        au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+
+        # --- asymmetric extra step (lines 188-192) ---
+        if direction == 1.0:
+            m3 = m3 + direction * step
+        else:
+            m3 = m3 + 2 * direction * step
+        au1_avg, au1_std = yield from _step_and_sample(
+            motor, m3, signal, settle_time, n_samples, sample_delay
+        )
+        print(
+            "M3_Ry after extra step (direction known) = {}".format(
+                (yield from bps.rd(motor))
+            )
+        )
+        print("extra step in the direction of increased signal")
+        print(
+            "climb-loop seed: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+            "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                M3_Ry=(yield from bps.rd(motor)),
+                Au0_avg=au0_avg,
+                Au0_std=au0_std,
+                Au1_avg=au1_avg,
+                Au1_std=au1_std,
+                diff=(au1_avg - au0_avg),
+                threshold=(au0_std + au1_std) / 2,
+            )
+        )
+
+        # --- climb loop ---
+        max_found = False
+        while not max_found:
+            threshold = (au0_std + au1_std) / 2
+            if abs(au1_avg - au0_avg) > threshold:
+                print(
+                    "climb-loop: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+                    "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                        M3_Ry=(yield from bps.rd(motor)),
+                        Au0_avg=au0_avg,
+                        Au0_std=au0_std,
+                        Au1_avg=au1_avg,
+                        Au1_std=au1_std,
+                        diff=(au1_avg - au0_avg),
+                        threshold=threshold,
+                    )
+                )
+                if (au1_avg - au0_avg) > 0:
+                    print("significant, positive step, continue")
+                    m3 = m3 + direction * step
+                    au0_avg, au0_std = au1_avg, au1_std
+                    au1_avg, au1_std = yield from _step_and_sample(
+                        motor, m3, signal, settle_time, n_samples, sample_delay
+                    )
+                else:
+                    print("significant, negative step, reached max: step back")
+                    max_found = True
+                    m3 = m3 - direction * step
+                    yield from bps.mv(motor, m3)
+            else:
+                print("insignificant, do nothing, go out")
+                max_found = True
+
+        final["pos"] = yield from bps.rd(motor)
+        final["au"] = au1_avg
+
+    yield from bpp.finalize_wrapper(_body(), _retract_diag())
+
+    # --- CSV log: append one row on completion (success or give-up) ---
+    if csv_path is not None and final["pos"] is not None:
+        with open(csv_path, mode="a") as f:
+            csv.writer(f, delimiter=",").writerow(
+                [
+                    eng,
+                    None if pgm_energy is None else float("{:.2f}".format(pgm_energy)),
+                    None if pgm_focus is None else float("{:.2f}".format(pgm_focus)),
+                    final["au"],
+                    float("{:.5f}".format(final["pos"])),
+                ]
+            )
+
+    return final["pos"], final["au"]
+
+
+def m3_adjust_centroid(
+    *,
+    motor=M3.Ry,
+    signal=qem08.current1.mean_value,
+    diag=M4AUdiag.trans,
+    diag_in=-6,
+    diag_out=2,
+    tune_range=5e-4,
+    min_step=5e-5,
+    num_points=10,
+    step_factor=3.0,
+    n_samples=10,
+    sample_delay=0.1,
+    csv_path=None,
+    eng=None,
+    pgm_energy=None,
+    pgm_focus=None,
+):
+    """Centroid-based alternative to :func:`m3_adjust`.
+
+    Inserts the diagnostic, delegates peak-finding to
+    :func:`bluesky.plans.tune_centroid` with ``snake=False`` so the
+    centroid scan always sweeps left-to-right, then takes a final
+    ``n_samples`` measurement at the centroid for the CSV row. Diag
+    retract is wrapped in ``bpp.finalize_wrapper`` so it runs on
+    success, give-up, or exception.
+
+    Parameters
+    ----------
+    motor : ophyd motor-like (e.g. ``M3.Ry``)
+    signal : ophyd Readable (e.g. ``qem08.current1.mean_value``)
+    diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
+    diag_in, diag_out : float
+        Diagnostic insert/retract positions.
+    tune_range : float
+        Half-range of the initial centroid scan. ``tune_centroid`` is
+        called with ``start = m3_initial - tune_range`` and
+        ``stop = m3_initial + tune_range``, where ``m3_initial`` is
+        the motor position when the plan is invoked.
+    min_step : float
+        Smallest step size for the centroid refinement.
+    num_points : int
+        Points per traversal in each centroid pass.
+    step_factor : float
+        Range-shrink factor between successive centroid passes
+        (``step_factor > 1.0``).
+    n_samples, sample_delay : int, float
+        After the centroid search converges, the plan takes one final
+        ``n_samples``-read measurement to populate the CSV row's ``Au``
+        column.
+    csv_path : str or None
+        If set, append one row at completion (success or exception-free
+        early exit).
+    eng, pgm_energy, pgm_focus : float or None
+        Pass-through values for the CSV row.
+
+    Returns
+    -------
+    (float, float)
+        ``(final_motor_position, final_signal_average)``.
+    """
+
+    signal_field = signal.name
+
+    final = {"pos": None, "au": None}
+
+    def _retract_diag():
+        yield from bps.mv(diag, diag_out)
+
+    def _body():
+        # --- read initial motor position ---
+        m3_initial = yield from bps.rd(motor)
+        print("M3_Ry initial = {}".format(m3_initial))
+
+        # --- insert diag ---
+        yield from bps.mv(diag, diag_in)
+
+        # --- centroid search ---
+        # tune_centroid requires start < stop.
+        # snake=False is REQUIRED: it makes the final mv direction
+        # deterministic (always a negative-direction approach from the
+        # end of the ascending sweep), so the optical system arrives at
+        # the centroid in a reproducible mechanical state.       start = m3_initial - tune_range
+        stop = m3_initial + tune_range
+        print(
+            "tune_centroid: bracket=[{}, {}]  min_step={}  num={}".format(
+                start, stop, min_step, num_points
+            )
+        )
+        yield from bp.tune_centroid(
+            [signal],
+            signal_field,
+            motor,
+            start,
+            stop,
+            min_step,
+            num=num_points,
+            step_factor=step_factor,
+            snake=False,
+        )
+
+        # --- final sample for the CSV row ---
+        au_avg, _au_std = yield from _sample(signal, n_samples, sample_delay)
+        final["pos"] = yield from bps.rd(motor)
+        final["au"] = au_avg
+        print("final: M3_Ry={}  Au_avg={}".format(final["pos"], final["au"]))
+
+    yield from bpp.finalize_wrapper(_body(), _retract_diag())
+
+    # --- CSV log: append one row on completion ---
+    if csv_path is not None and final["pos"] is not None:
+        with open(csv_path, mode="a") as f:
+            csv.writer(f, delimiter=",").writerow(
+                [
+                    eng,
+                    None if pgm_energy is None else float("{:.2f}".format(pgm_energy)),
+                    None if pgm_focus is None else float("{:.2f}".format(pgm_focus)),
+                    final["au"],
+                    float("{:.5f}".format(final["pos"])),
+                ]
+            )
+
+    return final["pos"], final["au"]
