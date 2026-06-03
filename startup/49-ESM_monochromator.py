@@ -10,6 +10,7 @@ from bluesky.plans import count, scan, adaptive_scan, spiral_fermat, spiral,scan
 from bluesky.plan_stubs import abs_set, mv, trigger_and_read
 from bluesky.utils import short_uid, Msg
 from bluesky.preprocessors import baseline_decorator, subs_decorator, stage_decorator, run_decorator
+import bluesky.preprocessors as bpp
 # from bluesky.callbacks import LiveTable,LivePlot, CallbackBase
 #from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -828,8 +829,47 @@ class ESM_monochromator_device:
 #The monochromator definition.
 Eph=ESM_monochromator_device('Eph')
 
-def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH', c='constant', shutter='close', md=None):
-    """Energy list_scan"""
+def scan_energy(
+    detectors,
+    energies,
+    *,
+    grating='800',
+    branch='A',
+    EPU='57',
+    LP='LH',
+    c='constant',
+    shutter='close',
+    m3_adjust_mode='off',
+    m3_adjust_csv_path=None,
+    md=None
+):
+    """Energy scan.
+
+    Parameters
+    ----------
+    detectors : list
+        Detectors to read at each energy.
+    energies : iterable of float
+        Photon energies to step through.
+    grating, branch, EPU, LP, c, shutter
+        Forwarded to ``Eph.move_to`` for each energy.
+    m3_adjust_mode : {'off', 'hillclimb', 'centroid'}
+        Per-energy M3 mirror pitch adjustment.
+        - ``'off'``:       no adjustment.
+        - ``'hillclimb'``: invoke ``m3_adjust`` at each energy.
+        - ``'centroid'``:  invoke ``m3_adjust_centroid`` at each
+          energy.
+    m3_adjust_csv_path : str or None
+        Path forwarded to the adjust plan for CSV logging of the
+        per-energy alignment results. ``None`` disables logging.
+    md : dict or None
+        Extra metadata for the scan run.
+    """
+    if m3_adjust_mode not in ('off', 'hillclimb', 'centroid'):
+        raise ValueError(
+            "m3_adjust_mode={!r} not recognized; expected 'off', 'hillclimb', or 'centroid'".format(m3_adjust_mode)
+        )
+
     _md = {
         "plan_name": "scan_energy",
         "detectors": [det.name for det in detectors],
@@ -840,6 +880,7 @@ def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH
         "LP": LP,
         "c": c,
         "shutter": shutter,
+        "m3_adjust_mode": m3_adjust_mode,
     }
     _md.update(md or {})
 
@@ -849,6 +890,26 @@ def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH
     def inner_scan():
         for energy in energies:
             yield from Eph.move_to(energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+            if m3_adjust_mode == 'hillclimb':
+                yield from m3_adjust(
+                    eng=energy,
+                    pgm_energy=PGM.Energy.get(),
+                    pgm_focus=PGM.Focus_Const.get(),
+                    csv_path=m3_adjust_csv_path,
+                )
+            elif m3_adjust_mode == 'centroid':
+                # tune_centroid (called by m3_adjust_centroid) opens its
+                # own run via @run_decorator. Wrap in set_run_key_wrapper
+                # so the inner open_run becomes a *parallel* run.
+                yield from bpp.set_run_key_wrapper(
+                    m3_adjust_centroid(
+                        eng=energy,
+                        pgm_energy=PGM.Energy.get(),
+                        pgm_focus=PGM.Focus_Const.get(),
+                        csv_path=m3_adjust_csv_path,
+                    ),
+                    run='m3_adjust',
+                )
             yield from trigger_and_read(list(detectors) + [PGM.Energy])
     
     yield from inner_scan()
