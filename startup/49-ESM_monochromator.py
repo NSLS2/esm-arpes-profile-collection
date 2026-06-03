@@ -856,9 +856,32 @@ def scan_energy(
     m3_adjust_mode : {'off', 'hillclimb', 'centroid'}
         Per-energy M3 mirror pitch adjustment.
         - ``'off'``:       no adjustment.
-        - ``'hillclimb'``: invoke ``m3_adjust`` at each energy.
+        - ``'hillclimb'``: invoke ``m3_adjust`` at each energy. The
+          hill-climb plan does only ``mv``/``rd``/``sleep``, so its
+          internal operations run in-line as part of scan_energy's
+          run without producing any extra events or streams.
         - ``'centroid'``:  invoke ``m3_adjust_centroid`` at each
-          energy.
+          energy. The inner plan is wrapped with two preprocessors,
+          scoped to this call site only:
+
+            * ``bpp.stub_wrapper`` strips ``open_run``/``close_run``/
+              ``stage``/``unstage`` messages from ``tune_centroid``'s
+              internal ``@run_decorator``, so the inner plan nests
+              cleanly inside scan_energy's run instead of trying to
+              open its own (which would be an illegal nested run).
+            * ``bpp.msg_mutator`` rewrites the inner plan's
+              ``'create'`` and ``'declare_stream'`` messages from the
+              default ``name='primary'`` to ``name='m3_optimization'``,
+              so per-point centroid events land in a dedicated
+              ``'m3_optimization'`` stream rather than mixing with
+              scan_energy's own primary-stream events (which have a
+              different schema).
+
+          Resulting data model: one scan_energy run with two streams.
+          ``'primary'`` carries one event per energy (detector +
+          PGM.Energy). ``'m3_optimization'`` carries
+          num_points * num_passes events per energy (mirror position
+          + signal value).
     m3_adjust_csv_path : str or None
         Path forwarded to the adjust plan for CSV logging of the
         per-energy alignment results. ``None`` disables logging.
@@ -898,17 +921,41 @@ def scan_energy(
                     csv_path=m3_adjust_csv_path,
                 )
             elif m3_adjust_mode == 'centroid':
-                # tune_centroid (called by m3_adjust_centroid) opens its
-                # own run via @run_decorator. Wrap in set_run_key_wrapper
-                # so the inner open_run becomes a *parallel* run.
-                yield from bpp.set_run_key_wrapper(
-                    m3_adjust_centroid(
-                        eng=energy,
-                        pgm_energy=PGM.Energy.get(),
-                        pgm_focus=PGM.Focus_Const.get(),
-                        csv_path=m3_adjust_csv_path,
-                    ),
-                    run='m3_adjust',
+                # m3_adjust_centroid calls bp.tune_centroid, which is
+                # @run_decorator'd and emits trigger_and_read into the
+                # default 'primary' stream. To make this nest inside
+                # scan_energy's run without (a) crashing on nested
+                # open_run or (b) polluting the primary stream with
+                # event-shape mismatches, wrap the inner plan with:
+                #   1. bpp.stub_wrapper -- strips open_run/close_run/
+                #      stage/unstage so the inner plan's events flow
+                #      into scan_energy's already-open run.
+                #   2. bpp.msg_mutator(..., _rename_stream) -- rewrites
+                #      'primary' -> 'm3_optimization' on every 'create'
+                #      and 'declare_stream' message from the inner
+                #      plan, so centroid events land in a dedicated
+                #      stream.
+                # This composition is intentionally scoped to this
+                # call site; do not extract _rename_stream into a
+                # shared helper.
+                def _rename_stream(msg):
+                    if msg.command in ('create', 'declare_stream'):
+                        if msg.kwargs.get('name') == 'primary':
+                            return msg._replace(
+                                kwargs={**msg.kwargs, 'name': 'm3_optimization'},
+                            )
+                    return msg
+
+                yield from bpp.stub_wrapper(
+                    bpp.msg_mutator(
+                        m3_adjust_centroid(
+                            eng=energy,
+                            pgm_energy=PGM.Energy.get(),
+                            pgm_focus=PGM.Focus_Const.get(),
+                            csv_path=m3_adjust_csv_path,
+                        ),
+                        _rename_stream,
+                    )
                 )
             yield from trigger_and_read(list(detectors) + [PGM.Energy])
     
