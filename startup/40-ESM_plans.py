@@ -2818,6 +2818,7 @@ def _tune_core(
     step_factor: float = 3.0,
     snake: bool = False,
     stream: str = "m3_optimization",
+    baseline_subtract: bool = True,
 ):
     if min_step <= 0:
         raise ValueError("min_step must be positive")
@@ -2836,6 +2837,10 @@ def _tune_core(
     cur_I = None
     sum_I = 0  # for peak centroid calculation, I(x)
     sum_xI = 0
+    # Per-pass collectors used only when ``baseline_subtract=True``; reset
+    # at the end of each pass alongside ``sum_I``/``sum_xI``.
+    positions: list = []
+    intensities: list = []
     if os.environ.get("BLUESKY_PREDECLARE", False):
         yield from bps.declare_stream(motor, *detectors, name=stream)  # type: ignore
     while abs(step) >= min_step and low_limit <= next_pos <= high_limit:
@@ -2843,18 +2848,38 @@ def _tune_core(
         yield from bps.mv(motor, next_pos)  # type: ignore      # Movable
         ret = yield from bps.trigger_and_read(list(detectors) + [motor], name=stream)  # type: ignore
         cur_I = ret[signal]["value"]
-        sum_I += cur_I
         position = ret[motor_name]["value"]
-        sum_xI += position * cur_I
+        if baseline_subtract:
+            positions.append(float(position))
+            intensities.append(float(cur_I))
+        else:
+            sum_I += cur_I
+            sum_xI += position * cur_I
 
         next_pos += step
         in_range = min(start, stop) <= next_pos <= max(start, stop)
 
         if not in_range:
-            if sum_I == 0:
-                return
-            peak_position = sum_xI / sum_I  # centroid
-            sum_I, sum_xI = 0, 0  # reset for next pass
+            if baseline_subtract:
+                # Subtract the per-pass minimum so the floor of I(x) over
+                # the current bracket contributes zero weight.  This
+                # eliminates the bracket-center bias that a constant
+                # dark-current pedestal would otherwise introduce.  Clip
+                # to non-negative for numerical safety.
+                I_arr = np.asarray(intensities, dtype=float)
+                x_arr = np.asarray(positions, dtype=float)
+                weights = np.clip(I_arr - I_arr.min(), 0.0, None)
+                sum_w = float(weights.sum())
+                if sum_w == 0.0:
+                    return  # degenerate pass (perfectly flat); abandon
+                peak_position = float((x_arr * weights).sum() / sum_w)
+                positions = []  # reset for next pass
+                intensities = []
+            else:
+                if sum_I == 0:
+                    return
+                peak_position = sum_xI / sum_I  # centroid
+                sum_I, sum_xI = 0, 0  # reset for next pass
             new_scan_range = (stop - start) / step_factor
             start = np.clip(peak_position - new_scan_range / 2, low_limit, high_limit)
             stop = np.clip(peak_position + new_scan_range / 2, low_limit, high_limit)
@@ -2881,6 +2906,7 @@ def m3_adjust_centroid(
     step_factor=3.0,
     n_samples=5,
     sample_delay=0.05,
+    baseline_subtract=True,
     csv_path=None,
     eng=None,
     pgm_energy=None,
@@ -2918,6 +2944,10 @@ def m3_adjust_centroid(
         After the centroid search converges, the plan takes one final
         ``n_samples``-read measurement to populate the CSV row's ``Au``
         column.
+    baseline_subtract : bool, default False
+        If ``True``, subtract the per-pass minimum intensity before
+        computing the centroid (so the floor of ``I(x)`` over the
+        bracket contributes zero weight).
     csv_path : str or None
         If set, append one row at completion (success or exception-free
         early exit).
@@ -2954,8 +2984,9 @@ def m3_adjust_centroid(
         start = m3_initial - tune_range
         stop = m3_initial + tune_range
         print(
-            "tune_centroid: bracket=[{}, {}]  min_step={}  num={}".format(
-                start, stop, min_step, num_points
+            "tune_centroid: bracket=[{}, {}]  min_step={}  num={}  "
+            "baseline_subtract={}".format(
+                start, stop, min_step, num_points, baseline_subtract
             )
         )
         yield from _tune_core(
@@ -2968,6 +2999,7 @@ def m3_adjust_centroid(
             num=num_points,
             step_factor=step_factor,
             snake=False,
+            baseline_subtract=baseline_subtract,
         )
 
         # --- final sample for the CSV row ---
