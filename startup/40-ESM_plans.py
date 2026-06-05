@@ -1,4 +1,5 @@
 import functools
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ from bluesky.preprocessors import (
     plan_mutator,
     finalize_wrapper,
 )
+from bluesky.protocols import Readable, NamedMovable
 from bluesky.utils import plan, make_decorator, root_ancestor, Msg
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
@@ -2805,6 +2807,67 @@ def m3_adjust(
     return final["pos"], final["au"]
 
 
+def _tune_core(
+    detectors: Sequence[Readable],
+    signal: str,
+    motor: NamedMovable,
+    start: float,
+    stop: float,
+    min_step: float,
+    num: int = 10,
+    step_factor: float = 3.0,
+    snake: bool = False,
+    stream: str = "m3_optimization",
+):
+    if min_step <= 0:
+        raise ValueError("min_step must be positive")
+    if step_factor <= 1.0:
+        raise ValueError("step_factor must be greater than 1.0")
+    try:
+        (motor_name,) = motor.hints["fields"]
+    except (AttributeError, ValueError):
+        motor_name = motor.name
+    low_limit = min(start, stop)
+    high_limit = max(start, stop)
+
+    next_pos = start
+    step = (stop - start) / (num - 1)
+    peak_position = None
+    cur_I = None
+    sum_I = 0  # for peak centroid calculation, I(x)
+    sum_xI = 0
+    if os.environ.get("BLUESKY_PREDECLARE", False):
+        yield from bps.declare_stream(motor, *detectors, name=stream)  # type: ignore
+    while abs(step) >= min_step and low_limit <= next_pos <= high_limit:
+        yield Msg("checkpoint")
+        yield from bps.mv(motor, next_pos)  # type: ignore      # Movable
+        ret = yield from bps.trigger_and_read(list(detectors) + [motor], name=stream)  # type: ignore
+        cur_I = ret[signal]["value"]
+        sum_I += cur_I
+        position = ret[motor_name]["value"]
+        sum_xI += position * cur_I
+
+        next_pos += step
+        in_range = min(start, stop) <= next_pos <= max(start, stop)
+
+        if not in_range:
+            if sum_I == 0:
+                return
+            peak_position = sum_xI / sum_I  # centroid
+            sum_I, sum_xI = 0, 0  # reset for next pass
+            new_scan_range = (stop - start) / step_factor
+            start = np.clip(peak_position - new_scan_range / 2, low_limit, high_limit)
+            stop = np.clip(peak_position + new_scan_range / 2, low_limit, high_limit)
+            if snake:
+                start, stop = stop, start
+            step = (stop - start) / (num - 1)
+            next_pos = start
+
+    # finally, move to peak position
+    if peak_position is not None:
+        yield from bps.mv(motor, peak_position)  # type: ignore
+
+
 def m3_adjust_centroid(
     *,
     motor=M3.Ry,
@@ -2888,13 +2951,14 @@ def m3_adjust_centroid(
         # deterministic (always a negative-direction approach from the
         # end of the ascending sweep), so the optical system arrives at
         # the centroid in a reproducible mechanical state.       start = m3_initial - tune_range
+        start = m3_initial - tune_range
         stop = m3_initial + tune_range
         print(
             "tune_centroid: bracket=[{}, {}]  min_step={}  num={}".format(
                 start, stop, min_step, num_points
             )
         )
-        yield from bp.tune_centroid(
+        yield from _tune_core(
             [signal],
             signal_field,
             motor,
