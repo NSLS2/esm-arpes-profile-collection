@@ -2890,6 +2890,7 @@ def _tune_core(
 
     # finally, move to peak position
     if peak_position is not None:
+        yield from bps.mv(motor, peak_position - 2 * step)  # type: ignore
         yield from bps.mv(motor, peak_position)  # type: ignore
 
 
