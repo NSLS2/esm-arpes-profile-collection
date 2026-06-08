@@ -921,41 +921,11 @@ def scan_energy(
                     csv_path=m3_adjust_csv_path,
                 )
             elif m3_adjust_mode == 'centroid':
-                # m3_adjust_centroid calls bp.tune_centroid, which is
-                # @run_decorator'd and emits trigger_and_read into the
-                # default 'primary' stream. To make this nest inside
-                # scan_energy's run without (a) crashing on nested
-                # open_run or (b) polluting the primary stream with
-                # event-shape mismatches, wrap the inner plan with:
-                #   1. bpp.stub_wrapper -- strips open_run/close_run/
-                #      stage/unstage so the inner plan's events flow
-                #      into scan_energy's already-open run.
-                #   2. bpp.msg_mutator(..., _rename_stream) -- rewrites
-                #      'primary' -> 'm3_optimization' on every 'create'
-                #      and 'declare_stream' message from the inner
-                #      plan, so centroid events land in a dedicated
-                #      stream.
-                # This composition is intentionally scoped to this
-                # call site; do not extract _rename_stream into a
-                # shared helper.
-                def _rename_stream(msg):
-                    if msg.command in ('create', 'declare_stream'):
-                        if msg.kwargs.get('name') == 'primary':
-                            return msg._replace(
-                                kwargs={**msg.kwargs, 'name': 'm3_optimization'},
-                            )
-                    return msg
-
-                yield from bpp.stub_wrapper(
-                    bpp.msg_mutator(
-                        m3_adjust_centroid(
-                            eng=energy,
-                            pgm_energy=PGM.Energy.get(),
-                            pgm_focus=PGM.Focus_Const.get(),
-                            csv_path=m3_adjust_csv_path,
-                        ),
-                        _rename_stream,
-                    )
+                yield from m3_adjust_centroid(
+                    eng=energy,
+                    pgm_energy=PGM.Energy.get(),
+                    pgm_focus=PGM.Focus_Const.get(),
+                    csv_path=m3_adjust_csv_path,
                 )
             yield from trigger_and_read(list(detectors) + [PGM.Energy])
     
