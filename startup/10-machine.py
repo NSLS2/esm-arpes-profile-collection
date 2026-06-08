@@ -380,4 +380,4 @@ Anal1A_GVEA1 = TwoButtonShutter('XF:21IDD-VA{ANAL:1A-GV:EA1_1}', name='Anal1A_GV
 D1 = EpicsSignalRO("XF:21IDD-ES{PS:Heat3}D1_RB", name="D1")
 D2 = EpicsSignalRO("XF:21IDD-ES{PS:Heat3}D2_RB", name="D2")
 Stinger = EpicsSignalRO("XF:21ID1-ES{TCtrl:2-Chan:A}T-I", name="Stinger")
-
+D3 = EpicsSignalRO("XF:21ID1-ES{TCtrl:2-Chan:B}T-I", name="D3")
