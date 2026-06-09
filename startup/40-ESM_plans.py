@@ -2343,7 +2343,6 @@ def _tune_core(
     min_step: float,
     num: int = 10,
     step_factor: float = 3.0,
-    snake: bool = False,
     stream: str = "m3_optimization",
     baseline_subtract: bool = True,
     backlash_distance: float = 2e-4,
@@ -2351,15 +2350,13 @@ def _tune_core(
     """Iterative centroid search for the peak of ``signal`` vs. ``motor``.
 
     Sweeps ``motor`` from ``start`` to ``stop`` in ``num`` points, reading
-    ``signal`` at each step into ``stream``. After each sweep, computes the
+    ``signal`` at each step. After each sweep, computes the
     intensity-weighted centroid of the just-completed pass (with the
     per-pass minimum optionally subtracted) and re-centers a shrunken
     bracket on it for the next pass. Terminates when ``abs(step) <
     min_step`` or ``next_pos`` would leave the original ``[start, stop]``
     window.
 
-    Backlash handling
-    -----------------
     To eliminate hysteresis bias, every "first sample of a pass" is
     preceded by a backlash unwind: the motor is first moved to
     ``next_pos - backlash_distance`` and then to ``next_pos`` itself, so
@@ -2370,7 +2367,7 @@ def _tune_core(
 
     Returns
     -------
-    (peak_position, max_I, max_I_pos) : (float or None, float or None, float or None)
+    (peak_position, max_I, max_I_pos)
         ``peak_position`` is the final centroid the motor was moved to
         (``None`` if the search aborted on a degenerate pass).
         ``max_I`` is the highest single-read intensity observed at any
@@ -2400,8 +2397,7 @@ def _tune_core(
     new_pass = True  # True => next sample is the first of a pass; do unwind
     sum_I = 0  # for peak centroid calculation, I(x)
     sum_xI = 0
-    # Per-pass collectors used only when ``baseline_subtract=True``; reset
-    # at the end of each pass alongside ``sum_I``/``sum_xI``.
+    # Per-pass collectors used only when ``baseline_subtract=True``
     positions: list = []
     intensities: list = []
     while abs(step) >= min_step and low_limit <= next_pos <= high_limit:
@@ -2424,7 +2420,7 @@ def _tune_core(
         cur_I = ret[signal]["value"]
         position = ret[motor_name]["value"]
 
-        # --- track max intensity across the entire search ---
+        # track max intensity across the entire search
         if max_I is None or cur_I > max_I:
             max_I = float(cur_I)
             max_I_pos = float(position)
@@ -2464,8 +2460,6 @@ def _tune_core(
             new_scan_range = (stop - start) / step_factor
             start = np.clip(peak_position - new_scan_range / 2, low_limit, high_limit)
             stop = np.clip(peak_position + new_scan_range / 2, low_limit, high_limit)
-            if snake:
-                start, stop = stop, start
             step = (stop - start) / (num - 1)
             next_pos = start
             new_pass = True  # arm unwind for the start of the next pass
@@ -2504,11 +2498,9 @@ def m3_adjust_centroid(
     """Centroid-based alternative to :func:`m3_adjust`.
 
     Inserts the diagnostic, delegates peak-finding to the local
-    :func:`_tune_core` helper with ``snake=False`` so the centroid scan
-    always sweeps left-to-right, then takes a final ``n_samples``
-    measurement at the centroid for the CSV row. Diag retract is wrapped
-    in ``bpp.finalize_wrapper`` so it runs on success, give-up, or
-    exception.
+    :func:`_tune_core`, then takes a final ``n_samples``
+    measurement at the centroid for the CSV row. Finally, it
+    retracts the diagnostic.
 
     Parameters
     ----------
@@ -2572,15 +2564,6 @@ def m3_adjust_centroid(
         yield from bps.mv(diag, diag_in)
 
         # --- centroid search ---
-        # _tune_core requires start < stop.
-        # snake=False is REQUIRED: every scan step is in the positive
-        # direction (low -> high). Combined with _tune_core's per-pass
-        # backlash unwind (which drops below the first point of each
-        # pass by backlash_distance and approaches from below) and its
-        # final approach to peak_position (same unwind pattern), every
-        # measured and final position is reached from below in the
-        # positive-loaded mechanical state, so backlash is consistently
-        # loaded throughout the plan.
         start = m3_initial - tune_range
         stop = m3_initial + tune_range
         print(
@@ -2599,7 +2582,6 @@ def m3_adjust_centroid(
             min_step,
             num=num_points,
             step_factor=step_factor,
-            snake=False,
             baseline_subtract=baseline_subtract,
             backlash_distance=backlash_distance,
         )
