@@ -1,3 +1,4 @@
+import csv
 import functools
 from collections.abc import Sequence
 
@@ -2592,7 +2593,7 @@ def _step_and_sample(motor, target, signal, settle, n, delay):
     return avg, std
 
 
-def m3_adjust(
+def m3_adjust_hillclimb(
     *,
     motor=M3.Ry,
     signal=qem08.current1.mean_value,
@@ -2819,11 +2820,44 @@ def _tune_core(
     snake: bool = False,
     stream: str = "m3_optimization",
     baseline_subtract: bool = True,
+    backlash_distance: float = 2e-4,
 ):
+    """Iterative centroid search for the peak of ``signal`` vs. ``motor``.
+
+    Sweeps ``motor`` from ``start`` to ``stop`` in ``num`` points, reading
+    ``signal`` at each step into ``stream``. After each sweep, computes the
+    intensity-weighted centroid of the just-completed pass (with the
+    per-pass minimum optionally subtracted) and re-centers a shrunken
+    bracket on it for the next pass. Terminates when ``abs(step) <
+    min_step`` or ``next_pos`` would leave the original ``[start, stop]``
+    window.
+
+    Backlash handling
+    -----------------
+    To eliminate hysteresis bias, every "first sample of a pass" is
+    preceded by a backlash unwind: the motor is first moved to
+    ``next_pos - backlash_distance`` and then to ``next_pos`` itself, so
+    the measurement is taken in the same positive-loaded mechanical state
+    as the subsequent positive-direction-step samples within the pass.
+    The final move to the converged ``peak_position`` uses the same
+    unwind pattern. Set ``backlash_distance=0`` to disable.
+
+    Returns
+    -------
+    (peak_position, max_I, max_I_pos) : (float or None, float or None, float or None)
+        ``peak_position`` is the final centroid the motor was moved to
+        (``None`` if the search aborted on a degenerate pass).
+        ``max_I`` is the highest single-read intensity observed at any
+        scan point during the entire search, and ``max_I_pos`` is the
+        motor position where it occurred. Both are ``None`` if no
+        samples were taken.
+    """
     if min_step <= 0:
         raise ValueError("min_step must be positive")
     if step_factor <= 1.0:
         raise ValueError("step_factor must be greater than 1.0")
+    if backlash_distance < 0:
+        raise ValueError("backlash_distance must be >= 0")
     try:
         (motor_name,) = motor.hints["fields"]
     except (AttributeError, ValueError):
@@ -2835,20 +2869,40 @@ def _tune_core(
     step = (stop - start) / (num - 1)
     peak_position = None
     cur_I = None
+    max_I = None  # highest single-read intensity observed during the search
+    max_I_pos = None  # motor position where max_I occurred
+    new_pass = True  # True => next sample is the first of a pass; do unwind
     sum_I = 0  # for peak centroid calculation, I(x)
     sum_xI = 0
     # Per-pass collectors used only when ``baseline_subtract=True``; reset
     # at the end of each pass alongside ``sum_I``/``sum_xI``.
     positions: list = []
     intensities: list = []
-    if os.environ.get("BLUESKY_PREDECLARE", False):
-        yield from bps.declare_stream(motor, *detectors, name=stream)  # type: ignore
     while abs(step) >= min_step and low_limit <= next_pos <= high_limit:
         yield Msg("checkpoint")
+
+        # --- per-pass backlash unwind ---
+        # On the first sample of each pass, drop below next_pos by
+        # backlash_distance and then approach next_pos from below. This
+        # guarantees the first sample of the pass is in the same
+        # positive-loaded mechanical state as the subsequent
+        # positive-direction-step samples within the pass, which
+        # otherwise would carry a hysteresis bias toward the bracket
+        # center.
+        if new_pass and backlash_distance > 0:
+            yield from bps.mv(motor, next_pos - backlash_distance)  # type: ignore
+        new_pass = False
+
         yield from bps.mv(motor, next_pos)  # type: ignore      # Movable
         ret = yield from bps.trigger_and_read(list(detectors) + [motor], name=stream)  # type: ignore
         cur_I = ret[signal]["value"]
         position = ret[motor_name]["value"]
+
+        # --- track max intensity across the entire search ---
+        if max_I is None or cur_I > max_I:
+            max_I = float(cur_I)
+            max_I_pos = float(position)
+
         if baseline_subtract:
             positions.append(float(position))
             intensities.append(float(cur_I))
@@ -2871,13 +2925,14 @@ def _tune_core(
                 weights = np.clip(I_arr - I_arr.min(), 0.0, None)
                 sum_w = float(weights.sum())
                 if sum_w == 0.0:
-                    return  # degenerate pass (perfectly flat); abandon
+                    # degenerate pass (perfectly flat); abandon
+                    return (None, max_I, max_I_pos)
                 peak_position = float((x_arr * weights).sum() / sum_w)
                 positions = []  # reset for next pass
                 intensities = []
             else:
                 if sum_I == 0:
-                    return
+                    return (None, max_I, max_I_pos)
                 peak_position = sum_xI / sum_I  # centroid
                 sum_I, sum_xI = 0, 0  # reset for next pass
             new_scan_range = (stop - start) / step_factor
@@ -2887,11 +2942,17 @@ def _tune_core(
                 start, stop = stop, start
             step = (stop - start) / (num - 1)
             next_pos = start
+            new_pass = True  # arm unwind for the start of the next pass
 
-    # finally, move to peak position
+    # --- final move to peak position, with the same unwind pattern as
+    # every per-pass first sample so the resting position has the same
+    # mechanical state (positive-loaded) as every measured point.
     if peak_position is not None:
-        yield from bps.mv(motor, peak_position - 2 * step)  # type: ignore
+        if backlash_distance > 0:
+            yield from bps.mv(motor, peak_position - backlash_distance)  # type: ignore
         yield from bps.mv(motor, peak_position)  # type: ignore
+
+    return (peak_position, max_I, max_I_pos)
 
 
 def m3_adjust_centroid(
@@ -2908,6 +2969,7 @@ def m3_adjust_centroid(
     n_samples=5,
     sample_delay=0.05,
     baseline_subtract=True,
+    backlash_distance=2e-4,
     csv_path=None,
     eng=None,
     pgm_energy=None,
@@ -2915,12 +2977,21 @@ def m3_adjust_centroid(
 ):
     """Centroid-based alternative to :func:`m3_adjust`.
 
-    Inserts the diagnostic, delegates peak-finding to
-    :func:`bluesky.plans.tune_centroid` with ``snake=False`` so the
-    centroid scan always sweeps left-to-right, then takes a final
-    ``n_samples`` measurement at the centroid for the CSV row. Diag
-    retract is wrapped in ``bpp.finalize_wrapper`` so it runs on
-    success, give-up, or exception.
+    Inserts the diagnostic, delegates peak-finding to the local
+    :func:`_tune_core` helper with ``snake=False`` so the centroid scan
+    always sweeps left-to-right, then takes a final ``n_samples``
+    measurement at the centroid for the CSV row. Diag retract is wrapped
+    in ``bpp.finalize_wrapper`` so it runs on success, give-up, or
+    exception.
+
+    On completion the plan prints a "hysteresis check" line that compares
+    the highest single-read intensity observed during the centroid scan
+    (``I_peak_scan``) to the average intensity measured at the final
+    parked position (``I_final``), both in absolute units and as a
+    percentage of ``I_peak_scan``. A large positive delta means the
+    optical system did not return to the brightest sampled state at the
+    final position, which typically indicates residual mechanical
+    hysteresis that ``backlash_distance`` is not fully compensating.
 
     Parameters
     ----------
@@ -2930,7 +3001,7 @@ def m3_adjust_centroid(
     diag_in, diag_out : float
         Diagnostic insert/retract positions.
     tune_range : float
-        Half-range of the initial centroid scan. ``tune_centroid`` is
+        Half-range of the initial centroid scan. ``_tune_core`` is
         called with ``start = m3_initial - tune_range`` and
         ``stop = m3_initial + tune_range``, where ``m3_initial`` is
         the motor position when the plan is invoked.
@@ -2945,10 +3016,18 @@ def m3_adjust_centroid(
         After the centroid search converges, the plan takes one final
         ``n_samples``-read measurement to populate the CSV row's ``Au``
         column.
-    baseline_subtract : bool, default False
+    baseline_subtract : bool, default True
         If ``True``, subtract the per-pass minimum intensity before
         computing the centroid (so the floor of ``I(x)`` over the
         bracket contributes zero weight).
+    backlash_distance : float, default 2e-4
+        Distance (in motor units) to back off below each target position
+        before approaching it. Applied at the start of every centroid
+        pass and on the final move to the peak, so every measurement and
+        the final resting position are reached from below in the same
+        positive-loaded mechanical state. Set to ``0`` to disable
+        backlash compensation entirely (useful for diagnosing how much
+        the compensation is actually buying you).
     csv_path : str or None
         If set, append one row at completion (success or exception-free
         early exit).
@@ -2958,7 +3037,9 @@ def m3_adjust_centroid(
     Returns
     -------
     (float, float)
-        ``(final_motor_position, final_signal_average)``.
+        ``(final_motor_position, final_signal_average)``. The
+        ``I_peak_scan`` / hysteresis-check diagnostic is printed but not
+        returned; see the stdout block printed after ``final:``.
     """
 
     signal_field = signal.name
@@ -2977,20 +3058,25 @@ def m3_adjust_centroid(
         yield from bps.mv(diag, diag_in)
 
         # --- centroid search ---
-        # tune_centroid requires start < stop.
-        # snake=False is REQUIRED: it makes the final mv direction
-        # deterministic (always a negative-direction approach from the
-        # end of the ascending sweep), so the optical system arrives at
-        # the centroid in a reproducible mechanical state.       start = m3_initial - tune_range
+        # _tune_core requires start < stop.
+        # snake=False is REQUIRED: every scan step is in the positive
+        # direction (low -> high). Combined with _tune_core's per-pass
+        # backlash unwind (which drops below the first point of each
+        # pass by backlash_distance and approaches from below) and its
+        # final approach to peak_position (same unwind pattern), every
+        # measured and final position is reached from below in the
+        # positive-loaded mechanical state, so backlash is consistently
+        # loaded throughout the plan.
         start = m3_initial - tune_range
         stop = m3_initial + tune_range
         print(
             "tune_centroid: bracket=[{}, {}]  min_step={}  num={}  "
-            "baseline_subtract={}".format(
-                start, stop, min_step, num_points, baseline_subtract
+            "baseline_subtract={}  backlash_distance={}".format(
+                start, stop, min_step, num_points,
+                baseline_subtract, backlash_distance,
             )
         )
-        yield from _tune_core(
+        peak_pos, I_peak_scan, x_peak_scan = yield from _tune_core(
             [signal],
             signal_field,
             motor,
@@ -3001,6 +3087,7 @@ def m3_adjust_centroid(
             step_factor=step_factor,
             snake=False,
             baseline_subtract=baseline_subtract,
+            backlash_distance=backlash_distance,
         )
 
         # --- final sample for the CSV row ---
@@ -3008,6 +3095,36 @@ def m3_adjust_centroid(
         final["pos"] = yield from bps.rd(motor)
         final["au"] = au_avg
         print("final: M3_Ry={}  Au_avg={}".format(final["pos"], final["au"]))
+
+        # --- hysteresis check: scan peak vs. final read ---
+        # Compares the highest single-read intensity observed during the
+        # centroid search to the n_samples-averaged intensity at the
+        # parked position. A large positive delta indicates the optical
+        # system did not return to the brightest sampled state and that
+        # backlash_distance may need to be increased.
+        if I_peak_scan is not None and I_peak_scan != 0:
+            delta_abs = I_peak_scan - au_avg
+            delta_pct = 100.0 * delta_abs / I_peak_scan
+            print(
+                "hysteresis check:\n"
+                "  scan peak  : I={:.6g}  at M3_Ry={:.6f}\n"
+                "  centroid   :              at M3_Ry={:.6f}\n"
+                "  final read : I={:.6g}    at M3_Ry={:.6f}\n"
+                "  delta      : I_peak_scan - I_final = {:+.6g}"
+                "  ({:+.3f}% of peak)".format(
+                    I_peak_scan, x_peak_scan, peak_pos,
+                    au_avg, final["pos"], delta_abs, delta_pct,
+                )
+            )
+        elif I_peak_scan is None:
+            print("hysteresis check: no scan samples recorded; skipped.")
+        else:
+            print(
+                "hysteresis check: I_peak_scan == 0; cannot compute "
+                "fractional delta. abs delta = {:+.6g}".format(
+                    I_peak_scan - au_avg
+                )
+            )
 
     yield from bpp.finalize_wrapper(_body(), _retract_diag())
 
