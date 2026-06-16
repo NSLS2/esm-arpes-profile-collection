@@ -47,6 +47,7 @@ if not (tiled_reading_api_key := apikey_redis_client.get("esm-arpes-apikey-activ
 
 # Initialize (user-authenticated) Tiled reading client
 tiled_reading_client = from_uri("http://tiled.nsls2.bnl.gov", api_key=tiled_reading_api_key, remember_me=False)["arpes"]["migration"]
+tiled_reading_client.context.http_client.headers['tiled-qos'] = 'acquisition'
 
 
 # Set timeout for all EpicsSignalBase objects
@@ -54,6 +55,7 @@ EpicsSignalBase.set_defaults(timeout=10.0, connection_timeout=10.0)
 
 # Configure a Tiled writing client
 tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"])["arpes"]["raw"]
+tiled_writing_client.context.http_client.headers['tiled-qos'] = 'acquisition'
 
 class TiledInserter:
     name = 'arpes'
