@@ -66,7 +66,6 @@ pytest = "*"
 
 [feature.test.tasks]
 tests = "pytest tests"
-ipython = ">=9.5.0"
 
 [environments]
 terminal = {features=["profile", "terminal"], solve-group="profile"}
