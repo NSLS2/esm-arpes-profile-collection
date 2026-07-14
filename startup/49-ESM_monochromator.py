@@ -818,18 +818,170 @@ class ESM_monochromator_device:
         return
 
 
-
-
-
-
-
 ## Define the instances of the ESM_device class
 
 #The monochromator definition.
 Eph=ESM_monochromator_device('Eph')
 
-def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH', c='constant', shutter='close', md=None):
-    """Energy list_scan"""
+
+def change_energy_stub(
+    energy,
+    *,
+    grating="800",
+    branch="A",
+    EPU="57",
+    LP="LH",
+    c="constant",
+    shutter="close",
+    m3_adjust_mode="off",
+    m3_adjust_csv_path=None,
+):
+    """Change energy (stub plan)
+
+    Parameters
+    ----------
+    energy : float
+        Photon energy to move to
+    grating, branch, EPU, LP, c, shutter
+        Forwarded to ``Eph.move_to`` for each energy.
+    m3_adjust_mode : {'off', 'hillclimb', 'centroid'}
+        Per-energy M3 mirror pitch adjustment.
+        - ``'off'``:       no adjustment.
+        - ``'hillclimb'``: invoke ``m3_adjust_hillclimb`` at each energy.
+        - ``'centroid'``:  invoke ``m3_adjust_centroid`` at each energy.
+    m3_adjust_csv_path : str or None
+        Path for CSV logging of the per-energy alignment results.
+        ``None`` disables logging.
+
+    Notes
+    -----
+    This is a stub plan: it does not open or close a Bluesky run. It is
+    meant to be composed inside an outer run.
+
+    Raises
+    ------
+    bluesky.utils.IllegalMessageSequence
+        When ``m3_adjust_mode='centroid'`` is used without an open run.
+    """
+    if m3_adjust_mode not in ("off", "hillclimb", "centroid"):
+        raise ValueError(
+            "m3_adjust_mode={!r} not recognized; expected 'off', 'hillclimb', or 'centroid'".format(
+                m3_adjust_mode
+            )
+        )
+    yield from Eph.move_to(
+        energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter
+    )
+    if m3_adjust_mode == "hillclimb":
+        yield from m3_adjust_hillclimb(
+            eng=energy,
+            pgm_energy=PGM.Energy.get(),
+            pgm_focus=PGM.Focus_Const.get(),
+            csv_path=m3_adjust_csv_path,
+        )
+    elif m3_adjust_mode == "centroid":
+        yield from m3_adjust_centroid(
+            eng=energy,
+            pgm_energy=PGM.Energy.get(),
+            pgm_focus=PGM.Focus_Const.get(),
+            csv_path=m3_adjust_csv_path,
+        )
+
+
+def change_energy(
+    energy,
+    grating="800",
+    branch="A",
+    EPU="57",
+    LP="LH",
+    c="constant",
+    shutter="close",
+    m3_adjust_mode="off",
+    m3_adjust_csv_path=None,
+    md=None,
+):
+    """Change energy
+
+    Parameters
+    ----------
+    energy : float
+        Photon energy to move to.
+    grating, branch, EPU, LP, c, shutter
+        Forwarded to ``Eph.move_to``.
+    m3_adjust_mode : {'off', 'hillclimb', 'centroid'}
+        Per-energy M3 mirror pitch adjustment. See
+        :func:`change_energy_stub` for details.
+    m3_adjust_csv_path : str or None
+        Path for CSV logging of the alignment result.
+    md : dict or None
+        Extra metadata merged into the run's ``start`` document.
+    """
+    _md = {
+        "plan_name": "change_energy",
+        "energy": energy,
+        "grating": grating,
+        "branch": branch,
+        "EPU": EPU,
+        "LP": LP,
+        "c": c,
+        "shutter": shutter,
+        "m3_adjust_mode": m3_adjust_mode,
+    }
+    _md.update(md or {})
+
+    @run_decorator(md=_md)
+    def inner():
+        yield from change_energy_stub(
+            energy,
+            grating=grating,
+            branch=branch,
+            EPU=EPU,
+            LP=LP,
+            c=c,
+            shutter=shutter,
+            m3_adjust_mode=m3_adjust_mode,
+            m3_adjust_csv_path=m3_adjust_csv_path,
+        )
+
+    return (yield from inner())
+
+
+def scan_energy(
+    detectors,
+    energies,
+    *,
+    grating="800",
+    branch="A",
+    EPU="57",
+    LP="LH",
+    c="constant",
+    shutter="close",
+    m3_adjust_mode="off",
+    m3_adjust_csv_path=None,
+    md=None,
+):
+    """Energy scan.
+
+    Parameters
+    ----------
+    detectors : list
+        Detectors to read at each energy.
+    energies : iterable of float
+        Photon energies to step through.
+    grating, branch, EPU, LP, c, shutter
+        Forwarded to ``Eph.move_to`` for each energy.
+    m3_adjust_mode : {'off', 'hillclimb', 'centroid'}
+        Per-energy M3 mirror pitch adjustment.
+        - ``'off'``:       no adjustment.
+        - ``'hillclimb'``: invoke ``m3_adjust_hillclimb`` at each energy.
+        - ``'centroid'``:  invoke ``m3_adjust_centroid`` at each energy.
+    m3_adjust_csv_path : str or None
+        Path for CSV logging of the per-energy alignment results.
+        ``None`` disables logging.
+    md : dict or None
+        Extra metadata for the scan run.
+    """
+
     _md = {
         "plan_name": "scan_energy",
         "detectors": [det.name for det in detectors],
@@ -840,15 +992,25 @@ def scan_energy(detectors, energies, grating='800', branch='A', EPU='57', LP='LH
         "LP": LP,
         "c": c,
         "shutter": shutter,
+        "m3_adjust_mode": m3_adjust_mode,
     }
     _md.update(md or {})
-
 
     @stage_decorator(detectors)
     @run_decorator(md=_md)
     def inner_scan():
         for energy in energies:
-            yield from Eph.move_to(energy, grating=grating, branch=branch, EPU=EPU, LP=LP, c=c, shutter=shutter)
+            yield from change_energy_stub(
+                energy,
+                grating=grating,
+                branch=branch,
+                EPU=EPU,
+                LP=LP,
+                c=c,
+                shutter=shutter,
+                m3_adjust_mode=m3_adjust_mode,
+                m3_adjust_csv_path=m3_adjust_csv_path,
+            )
             yield from trigger_and_read(list(detectors) + [PGM.Energy])
-    
-    yield from inner_scan()
+
+    return (yield from inner_scan())

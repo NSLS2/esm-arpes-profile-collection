@@ -1,4 +1,6 @@
+import csv
 import functools
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -10,6 +12,9 @@ from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
 from bluesky.plan_stubs import abs_set, mv, caching_repeater, unstage_all
 from bluesky.preprocessors import baseline_decorator, subs_decorator, run_decorator, stub_wrapper, plan_mutator, finalize_wrapper
 from bluesky.utils import plan, make_decorator, root_ancestor, Msg
+import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
+from bluesky.protocols import Readable, NamedMovable
 # from bluesky.callbacks import LiveTable, LivePlot, CallbackBase
 ###from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -2089,3 +2094,547 @@ def spiral_square(detectors, x_motor, y_motor, x_centre, y_centre, x_range,
     _md.update(md or {})
 
     return (yield from scan_nd(detectors, cyc, per_step=per_step, md=_md))
+
+
+def _sample(signal, n, delay):
+    """Read ``signal`` ``n`` times spaced by ``delay``.
+
+    Returns ``(mean, std)``. Plan-message generator.
+    """
+    vals = np.empty(n)
+    for i in range(n):
+        yield from bps.sleep(delay)
+        vals[i] = yield from bps.rd(signal)
+    return float(np.mean(vals)), float(np.std(vals))
+
+
+def _step_and_sample(motor, target, signal, settle, n, delay):
+    """Move ``motor`` to ``target``, settle, then sample.
+
+    Returns ``(mean, std)``.
+    """
+    yield from bps.mv(motor, target)
+    yield from bps.sleep(settle)
+    avg, std = yield from _sample(signal, n, delay)
+    return avg, std
+
+
+def m3_adjust_hillclimb(
+    *,
+    motor=M3.Ry,
+    signal=qem08.current1.mean_value,
+    diag=M4AUdiag.trans,
+    diag_in=-6,
+    diag_out=2,
+    step=5e-5,
+    n_samples=10,
+    sample_delay=0.1,
+    settle_time=3.0,
+    max_insignificant=5,
+    csv_path=None,
+    eng=None,
+    pgm_energy=None,
+    pgm_focus=None,
+):
+    """Hill-climb ``motor`` to maximize ``signal``.
+
+    Parameters
+    ----------
+    motor : ophyd motor-like (e.g. ``M3.Ry``)
+    signal : ophyd Signal-like (e.g. ``qem08.current1.mean_value``)
+    diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
+    diag_in, diag_out : float
+        Diagnostic insert/retract positions.
+    step : float
+        motor step size.
+    n_samples, sample_delay : int, float
+        Per-measurement read count and inter-read delay.
+    settle_time : float
+        Sleep after each motor move before sampling.
+    max_insignificant : int
+        Number of insignificant direction-search steps before giving up.
+    csv_path : str or None
+        If set, append one row at completion (success or give-up).
+    eng, pgm_energy, pgm_focus : float or None
+        Pass-through values for the CSV row.
+
+    Returns
+    -------
+    (float, float)
+        ``(final_motor_position, final_signal_average)``. The signal
+        average is the last ``Au1_avg`` value computed by the algorithm
+        (matching the value written to ``csv_path``'s 4th column).
+    """
+
+    # final_pos and final_au are populated by _body() and consumed by the
+    # CSV-write tail after finalize_wrapper completes.
+    final = {"pos": None, "au": None}
+
+    def _retract_diag():
+        yield from bps.mv(diag, diag_out)
+
+    def _body():
+        # --- backlash unwind ---
+        m3 = yield from bps.rd(motor)
+        print("M3_Ry start (pre-backlash) = {}".format(m3))
+        yield from bps.mv(motor, m3 - 2 * step)
+        yield from bps.mv(motor, m3 + 2 * step)
+        yield from bps.sleep(settle_time)
+        m3_0 = yield from bps.rd(motor)
+        print("M3_Ry_0 (after backlash unwind) = {}".format(m3_0))
+        m3 = m3_0
+
+        # --- insert diag, baseline sample ---
+        yield from bps.mv(diag, diag_in)
+        au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+
+        # --- first +step probe ---
+        m3 = m3 + step
+        au1_avg, au1_std = yield from _step_and_sample(
+            motor, m3, signal, settle_time, n_samples, sample_delay
+        )
+        print("M3_Ry after first +step probe = {}".format((yield from bps.rd(motor))))
+
+        # --- direction search loop ---
+        direction = 0.0
+        dir_found = False
+        insignificant = 0
+        gave_up = False
+
+        while not dir_found:
+            threshold = (au0_std + au1_std) / 2
+            print(
+                "direction-search: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+                "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                    M3_Ry=(yield from bps.rd(motor)),
+                    Au0_avg=au0_avg,
+                    Au0_std=au0_std,
+                    Au1_avg=au1_avg,
+                    Au1_std=au1_std,
+                    diff=(au1_avg - au0_avg),
+                    threshold=threshold,
+                )
+            )
+            if abs(au1_avg - au0_avg) > threshold:
+                direction = +1.0 if (au1_avg - au0_avg) > 0 else -1.0
+                dir_found = True
+            else:
+                m3 = m3 + step
+                au0_avg, au0_std = au1_avg, au1_std
+                # NOTE: original sleeps BEFORE the move inside this branch
+                # (line 160-161). Preserved literally.
+                yield from bps.sleep(settle_time)
+                yield from bps.mv(motor, m3)
+                print(
+                    "M3_Ry after insignificant-step move = {}".format(
+                        (yield from bps.rd(motor))
+                    )
+                )
+                au1_avg, au1_std = yield from _sample(signal, n_samples, sample_delay)
+                insignificant += 1
+                print(
+                    "one more insignificant step during direction search, tot: ",
+                    insignificant,
+                )
+                if insignificant == max_insignificant:
+                    # FIX vs. original: genuine restore + early return.
+                    yield from bps.mv(motor, m3_0)
+                    print("could not adjust M3")
+                    gave_up = True
+                    dir_found = True
+
+        if gave_up:
+            final["pos"] = yield from bps.rd(motor)
+            final["au"] = au1_avg
+            return  # diag retract happens in finalize_wrapper
+
+        print("determined direction: ", direction)
+
+        # --- seed sample after direction is known ---
+        au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+
+        # --- asymmetric extra step (lines 188-192) ---
+        if direction == 1.0:
+            m3 = m3 + direction * step
+        else:
+            m3 = m3 + 2 * direction * step
+        au1_avg, au1_std = yield from _step_and_sample(
+            motor, m3, signal, settle_time, n_samples, sample_delay
+        )
+        print(
+            "M3_Ry after extra step (direction known) = {}".format(
+                (yield from bps.rd(motor))
+            )
+        )
+        print("extra step in the direction of increased signal")
+        print(
+            "climb-loop seed: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+            "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                M3_Ry=(yield from bps.rd(motor)),
+                Au0_avg=au0_avg,
+                Au0_std=au0_std,
+                Au1_avg=au1_avg,
+                Au1_std=au1_std,
+                diff=(au1_avg - au0_avg),
+                threshold=(au0_std + au1_std) / 2,
+            )
+        )
+
+        # --- climb loop ---
+        max_found = False
+        while not max_found:
+            threshold = (au0_std + au1_std) / 2
+            if abs(au1_avg - au0_avg) > threshold:
+                print(
+                    "climb-loop: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
+                    "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                        M3_Ry=(yield from bps.rd(motor)),
+                        Au0_avg=au0_avg,
+                        Au0_std=au0_std,
+                        Au1_avg=au1_avg,
+                        Au1_std=au1_std,
+                        diff=(au1_avg - au0_avg),
+                        threshold=threshold,
+                    )
+                )
+                if (au1_avg - au0_avg) > 0:
+                    print("significant, positive step, continue")
+                    m3 = m3 + direction * step
+                    au0_avg, au0_std = au1_avg, au1_std
+                    au1_avg, au1_std = yield from _step_and_sample(
+                        motor, m3, signal, settle_time, n_samples, sample_delay
+                    )
+                else:
+                    print("significant, negative step, reached max: step back")
+                    max_found = True
+                    m3 = m3 - direction * step
+                    yield from bps.mv(motor, m3)
+            else:
+                print("insignificant, do nothing, go out")
+                max_found = True
+
+        final["pos"] = yield from bps.rd(motor)
+        final["au"] = au1_avg
+
+    yield from bpp.finalize_wrapper(_body(), _retract_diag())
+
+    # --- CSV log: append one row on completion (success or give-up) ---
+    if csv_path is not None and final["pos"] is not None:
+        with open(csv_path, mode="a") as f:
+            csv.writer(f, delimiter=",").writerow(
+                [
+                    eng,
+                    None if pgm_energy is None else float("{:.2f}".format(pgm_energy)),
+                    None if pgm_focus is None else float("{:.2f}".format(pgm_focus)),
+                    final["au"],
+                    float("{:.5f}".format(final["pos"])),
+                ]
+            )
+
+    return final["pos"], final["au"]
+
+
+def _tune_core(
+    detectors: Sequence[Readable],
+    signal: str,
+    motor: NamedMovable,
+    start: float,
+    stop: float,
+    min_step: float,
+    num: int = 10,
+    step_factor: float = 3.0,
+    stream: str = "m3_optimization",
+    baseline_subtract: bool = True,
+    backlash_distance: float = 2e-4,
+):
+    """Iterative centroid search for the peak of ``signal`` vs. ``motor``.
+
+    Sweeps ``motor`` from ``start`` to ``stop`` in ``num`` points, reading
+    ``signal`` at each step. After each sweep, computes the
+    intensity-weighted centroid of the just-completed pass (with the
+    per-pass minimum optionally subtracted) and re-centers a shrunken
+    bracket on it for the next pass. Terminates when ``abs(step) <
+    min_step`` or ``next_pos`` would leave the original ``[start, stop]``
+    window.
+
+    To eliminate hysteresis bias, every "first sample of a pass" is
+    preceded by a backlash unwind: the motor is first moved to
+    ``next_pos - backlash_distance`` and then to ``next_pos`` itself, so
+    the measurement is taken in the same positive-loaded mechanical state
+    as the subsequent positive-direction-step samples within the pass.
+    The final move to the converged ``peak_position`` uses the same
+    unwind pattern. Set ``backlash_distance=0`` to disable.
+
+    Returns
+    -------
+    (peak_position, max_I, max_I_pos)
+        ``peak_position`` is the final centroid the motor was moved to
+        (``None`` if the search aborted on a degenerate pass).
+        ``max_I`` is the highest single-read intensity observed at any
+        scan point during the entire search, and ``max_I_pos`` is the
+        motor position where it occurred. Both are ``None`` if no
+        samples were taken.
+    """
+    if min_step <= 0:
+        raise ValueError("min_step must be positive")
+    if step_factor <= 1.0:
+        raise ValueError("step_factor must be greater than 1.0")
+    if backlash_distance < 0:
+        raise ValueError("backlash_distance must be >= 0")
+    try:
+        (motor_name,) = motor.hints["fields"]
+    except (AttributeError, ValueError):
+        motor_name = motor.name
+    low_limit = min(start, stop)
+    high_limit = max(start, stop)
+
+    next_pos = start
+    step = (stop - start) / (num - 1)
+    peak_position = None
+    cur_I = None
+    max_I = None  # highest single-read intensity observed during the search
+    max_I_pos = None  # motor position where max_I occurred
+    new_pass = True  # True => next sample is the first of a pass; do unwind
+    sum_I = 0  # for peak centroid calculation, I(x)
+    sum_xI = 0
+    # Per-pass collectors used only when ``baseline_subtract=True``
+    positions: list = []
+    intensities: list = []
+    while abs(step) >= min_step and low_limit <= next_pos <= high_limit:
+        yield Msg("checkpoint")
+
+        # --- per-pass backlash unwind ---
+        # On the first sample of each pass, drop below next_pos by
+        # backlash_distance and then approach next_pos from below. This
+        # guarantees the first sample of the pass is in the same
+        # positive-loaded mechanical state as the subsequent
+        # positive-direction-step samples within the pass, which
+        # otherwise would carry a hysteresis bias toward the bracket
+        # center.
+        if new_pass and backlash_distance > 0:
+            yield from bps.mv(motor, next_pos - backlash_distance)  # type: ignore
+        new_pass = False
+
+        yield from bps.mv(motor, next_pos)  # type: ignore      # Movable
+        ret = yield from bps.trigger_and_read(list(detectors) + [motor], name=stream)  # type: ignore
+        cur_I = ret[signal]["value"]
+        position = ret[motor_name]["value"]
+
+        # track max intensity across the entire search
+        if max_I is None or cur_I > max_I:
+            max_I = float(cur_I)
+            max_I_pos = float(position)
+
+        if baseline_subtract:
+            positions.append(float(position))
+            intensities.append(float(cur_I))
+        else:
+            sum_I += cur_I
+            sum_xI += position * cur_I
+
+        next_pos += step
+        in_range = min(start, stop) <= next_pos <= max(start, stop)
+
+        if not in_range:
+            if baseline_subtract:
+                # Subtract the per-pass minimum so the floor of I(x) over
+                # the current bracket contributes zero weight.  This
+                # eliminates the bracket-center bias that a constant
+                # dark-current pedestal would otherwise introduce.  Clip
+                # to non-negative for numerical safety.
+                I_arr = np.asarray(intensities, dtype=float)
+                x_arr = np.asarray(positions, dtype=float)
+                weights = np.clip(I_arr - I_arr.min(), 0.0, None)
+                sum_w = float(weights.sum())
+                if sum_w == 0.0:
+                    # degenerate pass (perfectly flat); abandon
+                    return (None, max_I, max_I_pos)
+                peak_position = float((x_arr * weights).sum() / sum_w)
+                positions = []  # reset for next pass
+                intensities = []
+            else:
+                if sum_I == 0:
+                    return (None, max_I, max_I_pos)
+                peak_position = sum_xI / sum_I  # centroid
+                sum_I, sum_xI = 0, 0  # reset for next pass
+            new_scan_range = (stop - start) / step_factor
+            start = np.clip(peak_position - new_scan_range / 2, low_limit, high_limit)
+            stop = np.clip(peak_position + new_scan_range / 2, low_limit, high_limit)
+            step = (stop - start) / (num - 1)
+            next_pos = start
+            new_pass = True  # arm unwind for the start of the next pass
+
+    # --- final move to peak position, with the same unwind pattern as
+    # every per-pass first sample so the resting position has the same
+    # mechanical state (positive-loaded) as every measured point.
+    if peak_position is not None:
+        if backlash_distance > 0:
+            yield from bps.mv(motor, peak_position - backlash_distance)  # type: ignore
+        yield from bps.mv(motor, peak_position)  # type: ignore
+
+    return (peak_position, max_I, max_I_pos)
+
+
+def m3_adjust_centroid(
+    *,
+    motor=M3.Ry,
+    signal=qem08.current1.mean_value,
+    diag=M4AUdiag.trans,
+    diag_in=-6,
+    diag_out=2,
+    tune_range=5e-4,
+    min_step=5e-5,
+    num_points=10,
+    step_factor=3.0,
+    n_samples=5,
+    sample_delay=0.05,
+    baseline_subtract=True,
+    backlash_distance=2e-4,
+    csv_path=None,
+    eng=None,
+    pgm_energy=None,
+    pgm_focus=None,
+):
+    """Centroid-based alternative to :func:`m3_adjust`.
+
+    Inserts the diagnostic, delegates peak-finding to the local
+    :func:`_tune_core`, then takes a final ``n_samples``
+    measurement at the centroid for the CSV row. Finally, it
+    retracts the diagnostic.
+
+    Parameters
+    ----------
+    motor : ophyd motor-like (e.g. ``M3.Ry``)
+    signal : ophyd Readable (e.g. ``qem08.current1.mean_value``)
+    diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
+    diag_in, diag_out : float
+        Diagnostic insert/retract positions.
+    tune_range : float
+        Half-range of the initial centroid scan. ``_tune_core`` is
+        called with ``start = m3_initial - tune_range`` and
+        ``stop = m3_initial + tune_range``, where ``m3_initial`` is
+        the motor position when the plan is invoked.
+    min_step : float
+        Smallest step size for the centroid refinement.
+    num_points : int
+        Points per traversal in each centroid pass.
+    step_factor : float
+        Range-shrink factor between successive centroid passes
+        (``step_factor > 1.0``).
+    n_samples, sample_delay : int, float
+        After the centroid search converges, the plan takes one final
+        ``n_samples``-read measurement to populate the CSV row's ``Au``
+        column.
+    baseline_subtract : bool, default True
+        If ``True``, subtract the per-pass minimum intensity before
+        computing the centroid (so the floor of ``I(x)`` over the
+        bracket contributes zero weight).
+    backlash_distance : float, default 2e-4
+        Distance (in motor units) to back off below each target position
+        before approaching it. Applied at the start of every centroid
+        pass and on the final move to the peak, so every measurement and
+        the final resting position are reached from below in the same
+        positive-loaded mechanical state. Set to ``0`` to disable
+        backlash compensation entirely.
+    csv_path : str or None
+        If set, append one row at completion (success or exception-free
+        early exit).
+    eng, pgm_energy, pgm_focus : float or None
+        Pass-through values for the CSV row.
+
+    Returns
+    -------
+    (float, float)
+        ``(final_motor_position, final_signal_average)``
+    """
+
+    signal_field = signal.name
+
+    final = {"pos": None, "au": None}
+
+    def _retract_diag():
+        yield from bps.mv(diag, diag_out)
+
+    def _body():
+        # --- read initial motor position ---
+        m3_initial = yield from bps.rd(motor)
+        print("M3_Ry initial = {}".format(m3_initial))
+
+        # --- insert diag ---
+        yield from bps.mv(diag, diag_in)
+
+        # --- centroid search ---
+        start = m3_initial - tune_range
+        stop = m3_initial + tune_range
+        print(
+            "tune_centroid: bracket=[{}, {}]  min_step={}  num={}  "
+            "baseline_subtract={}  backlash_distance={}".format(
+                start, stop, min_step, num_points,
+                baseline_subtract, backlash_distance,
+            )
+        )
+        peak_pos, I_peak_scan, x_peak_scan = yield from _tune_core(
+            [signal],
+            signal_field,
+            motor,
+            start,
+            stop,
+            min_step,
+            num=num_points,
+            step_factor=step_factor,
+            baseline_subtract=baseline_subtract,
+            backlash_distance=backlash_distance,
+        )
+
+        # --- final sample for the CSV row ---
+        au_avg, _au_std = yield from _sample(signal, n_samples, sample_delay)
+        final["pos"] = yield from bps.rd(motor)
+        final["au"] = au_avg
+        print("final: M3_Ry={}  Au_avg={}".format(final["pos"], final["au"]))
+
+        # --- hysteresis check: scan peak vs. final read ---
+        # Compares the highest single-read intensity observed during the
+        # centroid search to the n_samples-averaged intensity at the
+        # parked position. A large positive delta indicates the optical
+        # system did not return to the brightest sampled state and that
+        # backlash_distance may need to be increased.
+        if I_peak_scan is not None and I_peak_scan != 0:
+            delta_abs = I_peak_scan - au_avg
+            delta_pct = 100.0 * delta_abs / I_peak_scan
+            print(
+                "hysteresis check:\n"
+                "  scan peak  : I={:.6g}  at M3_Ry={:.6f}\n"
+                "  centroid   :              at M3_Ry={:.6f}\n"
+                "  final read : I={:.6g}    at M3_Ry={:.6f}\n"
+                "  delta      : I_peak_scan - I_final = {:+.6g}"
+                "  ({:+.3f}% of peak)".format(
+                    I_peak_scan, x_peak_scan, peak_pos,
+                    au_avg, final["pos"], delta_abs, delta_pct,
+                )
+            )
+        elif I_peak_scan is None:
+            print("hysteresis check: no scan samples recorded; skipped.")
+        else:
+            print(
+                "hysteresis check: I_peak_scan == 0; cannot compute "
+                "fractional delta. abs delta = {:+.6g}".format(
+                    I_peak_scan - au_avg
+                )
+            )
+
+    yield from bpp.finalize_wrapper(_body(), _retract_diag())
+
+    # --- CSV log: append one row on completion ---
+    if csv_path is not None and final["pos"] is not None:
+        with open(csv_path, mode="a") as f:
+            csv.writer(f, delimiter=",").writerow(
+                [
+                    eng,
+                    None if pgm_energy is None else float("{:.2f}".format(pgm_energy)),
+                    None if pgm_focus is None else float("{:.2f}".format(pgm_focus)),
+                    final["au"],
+                    float("{:.5f}".format(final["pos"])),
+                ]
+            )
+
+    return final["pos"], final["au"]
