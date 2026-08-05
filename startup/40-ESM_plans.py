@@ -2307,14 +2307,25 @@ def m3_adjust_hillclimb(
                 else:
                     print("significant, negative step, reached max: step back")
                     max_found = True
+                    double_back = m3 - direction * 2 * step
                     m3 = m3 - direction * step
+                    yield from bps.mv(motor, double_back)
                     yield from bps.mv(motor, m3)
             else:
                 print("insignificant, do nothing, go out")
                 max_found = True
 
-        final["pos"] = yield from bps.rd(motor)
-        final["au"] = au1_avg
+        au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+        pos = yield from bps.rd(motor)
+        final["pos"] = pos
+        final["au"] = au0_avg
+        print(
+            "FINAL: M3_Ry={M3_Ry}  Au_final_avg={Au0_avg} +/- {Au0_std}  ".format(
+                M3_Ry=pos,
+                Au0_avg=au0_avg,
+                Au0_std=au0_std,
+            )
+        )
 
     yield from bpp.finalize_wrapper(_body(), _retract_diag())
 
