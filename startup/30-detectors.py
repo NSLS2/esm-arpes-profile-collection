@@ -167,7 +167,24 @@ except Exception as e:
 # qem15 = ESMQuadEM("XF:21IDC-BI{EM:15}EM180:", name="qem15")
 # qem16 = ESMQuadEM("XF:21IDC-BI{EM:16}EM180:", name="qem16")
 
+from ophyd import Kind
 xqem01 = ESMbpm("XF:21IDA-BI{EM:BPM01}", name="xqem01")
+
+xqem01.kind = Kind.hinted
+
+def hint_cpts(dev=xqem01, nums=(1, 3,)):
+    for num in range(1, len(list(dev.current_names.get()))+1):
+        getattr(dev, f"current{num}").mean_value.kind = Kind.normal
+    for num in nums:
+        getattr(dev, f"current{num}").mean_value.kind = Kind.hinted
+
+
+def count_with_hinted_cpts(dev=xqem01, nums=(1, 3,)):
+    for num in range(1, len(list(dev.current_names.get()))+1):
+        getattr(dev, f"current{num}").mean_value.kind = Kind.normal
+    for num in nums:
+        getattr(dev, f"current{num}").mean_value.kind = Kind.hinted
+    yield from bp.count([dev], num=5)
 
 
 class MyDetector(SingleTrigger, AreaDetector):
@@ -282,7 +299,7 @@ class SpectrumAnalyzer(Device, Readable):
 
     # Live data monitoring
     live_monitoring = Cpt(EpicsSignal, "LIVE:MONITORING")
-    live_max_count = Cpt(EpicsSignalRO, "LIVE:MAX_COUNT")
+    livxqem01_current2_mean_valuee_max_count = Cpt(EpicsSignalRO, "LIVE:MAX_COUNT")
     live_last_update = Cpt(EpicsSignalRO, "LIVE:LAST_UPDATE")
     live_max_count_threshold = Cpt(EpicsSignal, "LIVE:MAX_COUNT_THRESH", kind="config")
     live_max_count_exceeded = Cpt(EpicsSignal, "LIVE:MAX_COUNT_EXCEEDED")
