@@ -32,7 +32,7 @@ nexusformat = ">=2.0.3,<3"
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">=0.21.1, <0.22", extras = ["ca", "pva"] }
-nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "78a2646" }
+nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "380bd34" }
 
 
 [feature.qs.dependencies]

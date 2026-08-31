@@ -502,7 +502,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.1.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=380bd34#380bd340c097ab6cb1b3733b16f6b228fde980b9
       - pypi: https://files.pythonhosted.org/packages/0e/fd/aad3337b0d14352589af31719112d25f0f27958547c81ed0dc01301a1b3a/ophyd_async-0.21.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -1037,7 +1037,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - pypi: /home2/xf21id1/git/bsstudio
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=380bd34#380bd340c097ab6cb1b3733b16f6b228fde980b9
       - pypi: https://files.pythonhosted.org/packages/0e/fd/aad3337b0d14352589af31719112d25f0f27958547c81ed0dc01301a1b3a/ophyd_async-0.21.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -1498,7 +1498,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.1.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
-      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
+      - pypi: git+https://github.com/nmaytan/nslsii.git?rev=380bd34#380bd340c097ab6cb1b3733b16f6b228fde980b9
       - pypi: https://files.pythonhosted.org/packages/0e/fd/aad3337b0d14352589af31719112d25f0f27958547c81ed0dc01301a1b3a/ophyd_async-0.21.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -9350,15 +9350,14 @@ packages:
 - pypi: /home2/xf21id1/git/bsstudio
   name: bsstudio
   requires_python: '>=3.6'
-- pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
+- pypi: git+https://github.com/nmaytan/nslsii.git?rev=380bd34#380bd340c097ab6cb1b3733b16f6b228fde980b9
   name: nslsii
-  version: 0+untagged.794.g78a2646
+  version: 0+untagged.797.g380bd34
   requires_dist:
   - appdirs
   - bluesky-kafka>=0.8.0
   - bluesky>=1.8.1
   - caproto
-  - cryptography
   - databroker
   - h5py
   - httpx
