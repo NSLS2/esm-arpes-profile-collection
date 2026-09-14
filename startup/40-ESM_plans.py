@@ -2746,7 +2746,7 @@ def trigger_while_jogging(
 ):
     """Convenience wrapper: build a snake trajectory and run ``jog_along``.
 
-    trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y])
+    trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y, num])
 
     ``fast_motor``/``fast_range`` sweeps continuously, back and forth.
     ``slow_args`` is expected to be of the form ``[lo, hi, num]``.
