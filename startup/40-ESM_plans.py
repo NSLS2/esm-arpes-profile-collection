@@ -2738,10 +2738,9 @@ def trigger_while_jogging(
     detectors,
     fast_motor,
     fast_range,
-    *slow_args,
-    num=10,
+    slow_args,
     bound=None,
-    period=0.1,
+    period=0.0,
     snake_fast=True,
     md=None,
 ):
@@ -2750,8 +2749,7 @@ def trigger_while_jogging(
     trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y])
 
     ``fast_motor``/``fast_range`` sweeps continuously, back and forth.
-    ``slow_args`` is zero or more ``(motor, range)`` pairs, stepped ``num``
-    points each (or override per-axis with ``range = [lo, hi, num]``).
+    ``slow_args`` is expected to be of the form ``(range = [lo, hi, num])``.
     ``bound``, if given, caps the trajectory at that many waypoints;
     otherwise it runs forever -- stop with Ctrl-C -> ``RE.stop()``.
     """
