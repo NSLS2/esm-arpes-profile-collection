@@ -2749,21 +2749,16 @@ def trigger_while_jogging(
     trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y])
 
     ``fast_motor``/``fast_range`` sweeps continuously, back and forth.
-    ``slow_args`` is expected to be of the form ``(range = [lo, hi, num])``.
+    ``slow_args`` is expected to be of the form ``[lo, hi, num]``.
     ``bound``, if given, caps the trajectory at that many waypoints;
     otherwise it runs forever -- stop with Ctrl-C -> ``RE.stop()``.
     """
     if not isinstance(detectors, (list, tuple)):
         detectors = [detectors]
-    if len(slow_args) % 2 != 0:
-        raise ValueError("slow motors must be given as (motor, range) pairs")
 
-    slow_motors = list(slow_args[0::2])
-    slows = [tuple(r) if len(r) == 3 else (*r, num) for r in slow_args[1::2]]
-
-    trajectory = snake_forever(fast=tuple(fast_range), slows=slows, snake_fast=snake_fast)
+    trajectory = snake_forever(fast=tuple(fast_range), slows=[tuple(slow_args)], snake_fast=snake_fast)
     if bound is not None:
         trajectory = itertools.islice(trajectory, bound)
 
-    motors = [fast_motor, *slow_motors]
+    motors = [fast_motor, slow_args]
     return (yield from jog_along(detectors, motors, trajectory, period=period, md=md))
