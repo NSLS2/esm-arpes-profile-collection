@@ -1,6 +1,7 @@
 import csv
 import functools
 from collections.abc import Sequence
+import itertools
 
 import numpy as np
 import pandas as pd
@@ -2649,3 +2650,115 @@ def m3_adjust_centroid(
             )
 
     return final["pos"], final["au"]
+
+
+# --------------------------------------------------------------------------
+# Trajectory: ordinary Python, no bluesky involved.
+# --------------------------------------------------------------------------
+
+
+def _bouncing_odometer(nums):
+    """Yield index tuples over an N-D grid, endlessly.
+
+    Axis 0 advances every step; axis j+1 advances one step whenever axis j
+    bounces off an end. Edge indices dwell for one extra step at each
+    turnaround -- that is the physical bounce.
+    """
+    idx = [0] * len(nums)
+    dirs = [1] * len(nums)
+    while True:
+        yield tuple(idx)
+        for j in range(len(nums)):
+            nxt = idx[j] + dirs[j]
+            if 0 <= nxt < nums[j]:
+                idx[j] = nxt
+                break
+            dirs[j] = -dirs[j]  # bounce; carry the advance to the next axis
+
+
+def snake_forever(fast, slows, *, snake_fast=True):
+    """Yield waypoints ``(fast, slow0, slow1, ...)`` of an endless snake.
+
+    fast : (lo, hi)
+        Swept fully on every segment.
+    slows : [(lo, hi, num), ...]
+        Stepped axes, ordered fastest-to-slowest; each bounces at its ends.
+    snake_fast : bool
+        True (default): fast axis alternates direction each row (snake).
+        False: fast axis always sweeps lo -> hi, rewinding between rows
+        (a plain raster, like ``grid_scan``'s ``snake_axes=False``).
+    """
+    points = [np.linspace(lo, hi, num) for lo, hi, num in slows]
+    lo, hi = fast
+    fast_pos = lo
+    for idx in _bouncing_odometer([num for _, _, num in slows]):
+        if not snake_fast:
+            fast_pos = lo  # rewind: every row starts at the same end
+        slow_pos = tuple(p[i] for p, i in zip(points, idx))
+        yield (fast_pos, *slow_pos)  # step slow axes at the turnaround
+        fast_pos = hi if fast_pos == lo else lo
+        yield (fast_pos, *slow_pos)  # sweep the fast axis
+
+# --------------------------------------------------------------------------
+# Execution: one generic plan, any number of motors, any waypoint stream.
+# --------------------------------------------------------------------------
+
+
+def jog_along(dets, motors, waypoints, *, period=0.1, md=None):
+    """Follow ``waypoints`` (any iterable of position tuples, one entry per
+    motor -- may be infinite), triggering/reading ``dets`` while in flight."""
+    _md = {
+        "plan_name": "jog_along",
+        "motors": [m.name for m in motors],
+        "detectors": [d.name for d in dets],
+        **(md or {}),
+    }
+
+    @bpp.stage_decorator([*dets, *motors])
+    @bpp.run_decorator(md=_md)
+    def inner():
+        last = (None,) * len(motors)
+        for point in waypoints:
+            yield from bps.checkpoint()  # pause/resume boundary per segment
+            grp = short_uid("jog")
+            statuses = []
+            for motor, target, prev in zip(motors, point, last):
+                if target != prev:  # only jog the motors that move
+                    st = yield from bps.abs_set(motor, target, group=grp, wait=False)
+                    statuses.append(st)
+            last = point
+            while not all(st.done for st in statuses):
+                yield from bps.trigger_and_read([*dets, *motors])
+                yield from bps.sleep(period)
+            yield from bps.wait(group=grp)  # re-raise any motion failure
+
+    return (yield from inner())
+
+def trigger_while_jogging(
+    detectors,
+    fast_motor,
+    fast_range,
+    slow_args,
+    bound=None,
+    period=0.0,
+    snake_fast=True,
+    md=None,
+):
+    """Convenience wrapper: build a snake trajectory and run ``jog_along``.
+
+    trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y, num])
+
+    ``fast_motor``/``fast_range`` sweeps continuously, back and forth.
+    ``slow_args`` is expected to be of the form ``[lo, hi, num]``.
+    ``bound``, if given, caps the trajectory at that many waypoints;
+    otherwise it runs forever -- stop with Ctrl-C -> ``RE.stop()``.
+    """
+    if not isinstance(detectors, (list, tuple)):
+        detectors = [detectors]
+
+    trajectory = snake_forever(fast=tuple(fast_range), slows=[tuple(slow_args)], snake_fast=snake_fast)
+    if bound is not None:
+        trajectory = itertools.islice(trajectory, bound)
+
+    motors = [fast_motor, slow_args]
+    return (yield from jog_along(detectors, motors, trajectory, period=period, md=md))
