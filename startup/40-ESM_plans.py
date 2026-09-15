@@ -2209,7 +2209,7 @@ def m3_adjust_hillclimb(
             threshold = (au0_std + au1_std) / 2
             print(
                     "direction-search: M3_Ry={M3_Ry}  Au0_avg={Au0_avg:.4e} +/- {Au0_std:.4e}  "
-                "Au1_avg={Au1_avg:.4e} +/- {Au1_std:.4e}  diff={diff:.4e}  threshold={threshold}".format(
+                "Au1_avg={Au1_avg:.4e} +/- {Au1_std:.4e}  diff={diff:.4e}  threshold={threshold:.4e}".format(
                     M3_Ry=(yield from bps.rd(motor)),
                     Au0_avg=au0_avg,
                     Au0_std=au0_std,
@@ -2272,8 +2272,8 @@ def m3_adjust_hillclimb(
         )
         print("extra step in the direction of increased signal")
         print(
-            "climb-loop seed: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
-            "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+            "climb-loop seed: M3_Ry={M3_Ry}  Au0_avg={Au0_avg:.4e} +/- {Au0_std:.4e}  "
+            "Au1_avg={Au1_avg:.4e} +/- {Au1_std:.4e}  diff={diff:.4e}  threshold={threshold:.4e}".format(
                 M3_Ry=(yield from bps.rd(motor)),
                 Au0_avg=au0_avg,
                 Au0_std=au0_std,
@@ -2290,8 +2290,8 @@ def m3_adjust_hillclimb(
             threshold = (au0_std + au1_std) / 2
             if abs(au1_avg - au0_avg) > threshold:
                 print(
-                    "climb-loop: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
-                    "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                    "climb-loop: M3_Ry={M3_Ry}  Au0_avg={Au0_avg:.4e} +/- {Au0_std:.4e}  "
+                    "Au1_avg={Au1_avg:.4e} +/- {Au1_std:.4e}  diff={diff:.4e}  threshold={threshold:.4e}".format(
                         M3_Ry=(yield from bps.rd(motor)),
                         Au0_avg=au0_avg,
                         Au0_std=au0_std,
@@ -2324,7 +2324,7 @@ def m3_adjust_hillclimb(
         final["pos"] = pos
         final["au"] = au0_avg
         print(
-            "FINAL: M3_Ry={M3_Ry}  Au_final_avg={Au0_avg} +/- {Au0_std}  ".format(
+            "FINAL: M3_Ry={M3_Ry}  Au_final_avg={Au0_avg:.4e} +/- {Au0_std:.4e}  ".format(
                 M3_Ry=pos,
                 Au0_avg=au0_avg,
                 Au0_std=au0_std,
@@ -2605,7 +2605,7 @@ def m3_adjust_centroid(
         au_avg, _au_std = yield from _sample(signal, n_samples, sample_delay)
         final["pos"] = yield from bps.rd(motor)
         final["au"] = au_avg
-        print("final: M3_Ry={}  Au_avg={}".format(final["pos"], final["au"]))
+        print("final: M3_Ry={}  Au_avg={:.4e}".format(final["pos"], final["au"]))
 
         # --- hysteresis check: scan peak vs. final read ---
         # Compares the highest single-read intensity observed during the
