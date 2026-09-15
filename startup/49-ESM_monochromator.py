@@ -552,7 +552,13 @@ class ESM_monochromator_device:
         if PGM.Grating_Trans.user_setpoint.value != self.Grt_Translation[grating]:
             yield from mv(PGM.Mirror_Pitch_kill, 1)
             yield from mv(PGM.Grating_Pitch_kill, 1)
+            yield from mv(PGM.Grating_Trans, self.Grt_Translation[grating]+5)
+            yield from mv(PGM.Grating_Trans, self.Grt_Translation[grating]-0.5)
+            yield from sleep(5)
+            print(PGM.Grating_Trans_Encoder.user_readback.get())
             yield from mv(PGM.Grating_Trans, self.Grt_Translation[grating])
+            print(PGM.Grating_Trans_Encoder.user_readback.get())
+
 
         # Line added for Jurek on March 20, 2023
         if branch == 'B':
