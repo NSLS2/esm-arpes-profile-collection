@@ -2188,6 +2188,9 @@ def m3_adjust_hillclimb(
         # --- insert diag, baseline sample ---
         yield from bps.mv(diag, diag_in)
         au0_avg, au0_std = yield from _sample(signal, n_samples, sample_delay)
+        if au0_avg < 10e-12:
+            print(f"No detectable current: {au0_avg:.4e} {au0_std:.4e}")
+            raise ValueError(f"No detectable current: {au0_avg:.4e} {au0_std:.4e}")
 
         # --- first +step probe ---
         m3 = m3 + step
@@ -2205,8 +2208,8 @@ def m3_adjust_hillclimb(
         while not dir_found:
             threshold = (au0_std + au1_std) / 2
             print(
-                "direction-search: M3_Ry={M3_Ry}  Au0_avg={Au0_avg} +/- {Au0_std}  "
-                "Au1_avg={Au1_avg} +/- {Au1_std}  diff={diff}  threshold={threshold}".format(
+                    "direction-search: M3_Ry={M3_Ry}  Au0_avg={Au0_avg:.4e} +/- {Au0_std:.4e}  "
+                "Au1_avg={Au1_avg:.4e} +/- {Au1_std:.4e}  diff={diff:.4e}  threshold={threshold}".format(
                     M3_Ry=(yield from bps.rd(motor)),
                     Au0_avg=au0_avg,
                     Au0_std=au0_std,
@@ -2738,7 +2741,7 @@ def trigger_while_jogging(
     detectors,
     fast_motor,
     fast_range,
-    slow_args,
+    *slow_args,
     bound=None,
     period=0.0,
     snake_fast=True,
@@ -2756,9 +2759,12 @@ def trigger_while_jogging(
     if not isinstance(detectors, (list, tuple)):
         detectors = [detectors]
 
-    trajectory = snake_forever(fast=tuple(fast_range), slows=[tuple(slow_args)], snake_fast=snake_fast)
+    slow_motors = list(slow_args[0::2])
+    slows = list(slow_args[1::2])
+
+    trajectory = snake_forever(fast=tuple(fast_range), slows=slows, snake_fast=snake_fast)
     if bound is not None:
         trajectory = itertools.islice(trajectory, bound)
 
-    motors = [fast_motor, slow_args]
+    motors = [fast_motor, *slow_motors]
     return (yield from jog_along(detectors, motors, trajectory, period=period, md=md))
