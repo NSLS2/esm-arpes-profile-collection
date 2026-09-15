@@ -2102,11 +2102,17 @@ def _sample(signal, n, delay):
 
     Returns ``(mean, std)``. Plan-message generator.
     """
-    vals = np.empty(n)
-    for i in range(n):
-        yield from bps.sleep(delay)
-        vals[i] = yield from bps.rd(signal)
-    return float(np.mean(vals)), float(np.std(vals))
+    @bpp.stage_decorator([signal])
+    def _inner():
+        vals = np.empty(n)
+        for i in range(n):
+            yield from bps.sleep(delay)
+            yield from bps.trigger(signal)
+            ret = yield from bps.read(signal)
+            vals[i] = ret[signal.current1.mean_value.name]["value"]
+        return float(np.mean(vals)), float(np.std(vals))
+
+    return (yield from _inner())
 
 
 def _step_and_sample(motor, target, signal, settle, n, delay):
@@ -2123,7 +2129,7 @@ def _step_and_sample(motor, target, signal, settle, n, delay):
 def m3_adjust_hillclimb(
     *,
     motor=M3.Ry,
-    signal=qem08.current1.mean_value,
+    signal=qem08,
     diag=M4AUdiag.trans,
     diag_in=-6,
     diag_out=2,
@@ -2142,7 +2148,7 @@ def m3_adjust_hillclimb(
     Parameters
     ----------
     motor : ophyd motor-like (e.g. ``M3.Ry``)
-    signal : ophyd Signal-like (e.g. ``qem08.current1.mean_value``)
+    signal : ophyd QEM-like device (e.g. ``qem08``)
     diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
     diag_in, diag_out : float
         Diagnostic insert/retract positions.
@@ -2493,7 +2499,7 @@ def _tune_core(
 def m3_adjust_centroid(
     *,
     motor=M3.Ry,
-    signal=qem08.current1.mean_value,
+    signal=qem08,
     diag=M4AUdiag.trans,
     diag_in=-6,
     diag_out=2,
@@ -2520,7 +2526,7 @@ def m3_adjust_centroid(
     Parameters
     ----------
     motor : ophyd motor-like (e.g. ``M3.Ry``)
-    signal : ophyd Readable (e.g. ``qem08.current1.mean_value``)
+    signal : ophyd QEM (e.g. ``qem08``)
     diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
     diag_in, diag_out : float
         Diagnostic insert/retract positions.
@@ -2563,7 +2569,7 @@ def m3_adjust_centroid(
         ``(final_motor_position, final_signal_average)``
     """
 
-    signal_field = signal.name
+    signal_field = signal.current1.mean_value.name
 
     final = {"pos": None, "au": None}
 
