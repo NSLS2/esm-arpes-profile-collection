@@ -9916,13 +9916,12 @@ packages:
   timestamp: 1779159948016
 - pypi: git+https://github.com/nmaytan/nslsii.git?rev=78a2646#78a26463039a4eb73974ae60ea766e9acc2dd5df
   name: nslsii
-  version: 0+untagged.794.g78a2646
+  version: 0+untagged.797.g380bd34
   requires_dist:
   - appdirs
   - bluesky-kafka>=0.8.0
   - bluesky>=1.8.1
   - caproto
-  - cryptography
   - databroker
   - h5py
   - httpx

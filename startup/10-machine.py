@@ -115,8 +115,9 @@ M4B = Hexapod_Mir("XF:21IDC-OP{Mir:4B-Ax:B4",name="M4B")
 class Monochromator(Device):
     Focus_Const = Comp(EpicsMotor,"-Ax:8_Cff}Mtr", kind='hinted')
     Energy = Comp(EpicsMotor,"-Ax:8_Eng}Mtr", kind='hinted')
-#    Grating_Trans = Comp(EpicsMotor,"-Ax:8_GT}Mtr")
-    Grating_Trans = Comp(EpicsMotor,"-Ax:8_GT}Trans:Mtr")
+    Grating_Trans = Comp(EpicsMotor,"-Ax:8_GT}Mtr")     #translation motor in open loop
+    Grating_Trans_Encoder = Comp(EpicsMotor,"-Ax:8_GTR}Mtr")     #translation motor in open loop
+#    Grating_Trans = Comp(EpicsMotor,"-Ax:8_GT}Trans:Mtr")    #virtual motor
     Mirror_Pitch = Comp(EpicsMotor,"-Ax:8_MP}Mtr")
     Mirror_Pitch_off = Comp(EpicsSignal,"-Ax:8_MP}Mtr.OFF")
     Mirror_Pitch_set = Comp(EpicsSignal,"-Ax:8_MP}Mtr.SET")
