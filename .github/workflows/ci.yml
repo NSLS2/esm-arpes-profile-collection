@@ -20,8 +20,11 @@ jobs:
 
       - name: Remove BSStudio dependency for CI only
         run: |
-          sed -i '/^bsstudio = { path = "\/home\/xf21id1\/git\/bsstudio"/d' pixi.toml
-          grep -n "bsstudio" pixi.toml || echo "bsstudio not found"
+          echo "Removing BSStudio dependency from pixi.toml"
+          grep -n -A5 -B2 "bsstudio" pixi.toml || true
+          sed -i '/^bsstudio = /d' pixi.toml
+          echo "after removing BSStudio dependency from pixi.toml"
+          grep -n -A5 -B2 "bsstudio" pixi.toml || true
 
       - name: Setup Pixi
         uses: prefix-dev/setup-pixi@82d477f15f3a381dbcc8adc1206ce643fe110fb7  # v0.9.3
