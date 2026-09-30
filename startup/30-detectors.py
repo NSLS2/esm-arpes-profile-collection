@@ -9,7 +9,7 @@ from bluesky.protocols import Readable, WritesExternalAssets
 from bluesky.utils import SyncOrAsyncIterator, Asset
 from event_model import DataKey, compose_resource
 from ophyd import Kind
-from ophyd.quadem import QuadEM  # , QuadEMPort  # TODO in the future once it's in ophyd
+from nslsii.ophyd_async.devices import QuadEM
 from ophyd import (
     Device,
     EpicsSignalRO,
@@ -25,7 +25,6 @@ from ophyd.areadetector.filestore_mixins import FileStoreHDF5IterativeWrite
 from ophyd.areadetector.filestore_mixins import FileStoreTIFFIterativeWrite
 from ophyd.areadetector import (
     ADComponent as ADCpt,
-    EpicsSignalWithRBV,
     ImagePlugin,
     StatsPlugin,
     DetectorBase,
@@ -66,125 +65,29 @@ class TIFFPluginWithFileStore(TIFFPlugin, FileStoreTIFFIterativeWrite):
     pass
 
 
-# TODO: replace from one in the future ophyd
-class QuadEMPort(ADBase):
-    port_name = Cpt(Signal, value="")
+from ophyd_async.core import NotConnectedError, init_devices
 
-    def __init__(self, port_name, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.port_name.put(port_name)
-
-
-class ESMQuadEM(QuadEM):
-    conf = Cpt(QuadEMPort, port_name="NSLS_EM")
-    em_range = Cpt(EpicsSignalWithRBV, "Range", string=True)
-
-    image = Cpt(ImagePlugin_V33, "image1:")
-    current1 = Cpt(StatsPlugin_V33, "Current1:")
-    current2 = Cpt(StatsPlugin_V33, "Current2:")
-    current3 = Cpt(StatsPlugin_V33, "Current3:")
-    current4 = Cpt(StatsPlugin_V33, "Current4:")
-
-    sum_all = Cpt(StatsPlugin_V33, "SumAll:")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.stage_sigs.update([(self.acquire_mode, "Single")])  # single mode
-        self.configuration_attrs = [
-            "integration_time",
-            "averaging_time",
-            "em_range",
-            "num_averaged",
-            "values_per_read",
-        ]
-
-    def set_primary(self, n, value=None):
-        name_list = []
-        if "All" in n:
-            for k in self.read_attrs:
-                getattr(self, k).kind = "normal"
-            return
-
-        for channel in n:
-            cur = getattr(self, f"current{channel}")
-            cur.kind |= Kind.normal
-            cur.mean_value = Kind.hinted
-
-
-class ESMbpm(ESMQuadEM):
-    conf = Cpt(QuadEMPort, port_name="NSLS2_EM")
-
-
+# qem09, qem10, qem11, qem15, qem16 are not installed (qem09/qem11 not connected as of May 24, 2018).
 try:
-    qem01 = ESMQuadEM("XF:21IDA-BI{EM:1}EM180:", name="qem01")
-except Exception as e:
-    print(e)
-try:
-    qem02 = ESMQuadEM("XF:21IDB-BI{EM:2}EM180:", name="qem02")
-except Exception as e:
-    print(e)
-try:
-    qem03 = ESMQuadEM("XF:21IDB-BI{EM:3}EM180:", name="qem03")
-except Exception as e:
-    print(e)
-try:
-    qem04 = ESMQuadEM("XF:21IDB-BI{EM:4}EM180:", name="qem04")
-except Exception as e:
-    print(e)
-try:
-    qem05 = ESMQuadEM("XF:21IDB-BI{EM:5}EM180:", name="qem05")
-except Exception as e:
-    print(e)
-try:
-    qem06 = ESMQuadEM("XF:21IDC-BI{EM:6}EM180:", name="qem06")
-except Exception as e:
-    print(e)
+    with init_devices():
+        qem01 = QuadEM("XF:21IDA-BI{EM:1}EM180:")
+        qem02 = QuadEM("XF:21IDB-BI{EM:2}EM180:")
+        qem03 = QuadEM("XF:21IDB-BI{EM:3}EM180:")
+        qem04 = QuadEM("XF:21IDB-BI{EM:4}EM180:")
+        qem05 = QuadEM("XF:21IDB-BI{EM:5}EM180:")
+        qem06 = QuadEM("XF:21IDC-BI{EM:6}EM180:")
+        qem07 = QuadEM("XF:21IDC-BI{EM:7}")
+        qem08 = QuadEM("XF:21IDC-BI{EM:8}EM180:")
+        qem12 = QuadEM("XF:21IDC-BI{EM:12}EM180:")
+        qem13 = QuadEM("XF:21IDC-BI{EM:13}EM180:")
+        xqem01 = QuadEM("XF:21IDA-BI{EM:BPM01}")
+except NotConnectedError as e:
+    print(f"Some QuadEMs failed to connect:\n{e}")
 
-try:
-    qem07 = ESMQuadEM("XF:21IDC-BI{EM:7}", name="qem07")
-except Exception as e:
-    print(e)
-
-try:
-    qem08 = ESMQuadEM("XF:21IDC-BI{EM:8}EM180:", name="qem08")
-except Exception as e:
-    print(e)
-
-# qem09 not connected as of May 24, 2018
-# qem09 = ESMQuadEM('XF:21IDC-BI{EM:9}EM180:', name='qem09')
-##qem10 = ESMQuadEM("XF:21IDC-BI{EM:10}EM180:", name="qem10")
-# qem11 not connected as of May 24, 2018
-# qem11 = ESMQuadEM('XF:21IDC-BI{EM:11}EM180:', name='qem11')
-
-try:
-    qem12 = ESMQuadEM("XF:21IDC-BI{EM:12}EM180:", name="qem12")
-except Exception as e:
-    print(e)
-try:
-    qem13 = ESMQuadEM("XF:21IDC-BI{EM:13}EM180:", name="qem13")
-except Exception as e:
-    print(e)
-# qem15 = ESMQuadEM("XF:21IDC-BI{EM:15}EM180:", name="qem15")
-# qem16 = ESMQuadEM("XF:21IDC-BI{EM:16}EM180:", name="qem16")
-
-from ophyd import Kind
-xqem01 = ESMbpm("XF:21IDA-BI{EM:BPM01}", name="xqem01")
-
-xqem01.kind = Kind.hinted
-
-def hint_cpts(dev=xqem01, nums=(1, 3,)):
-    for num in range(1, len(list(dev.current_names.get()))+1):
-        getattr(dev, f"current{num}").mean_value.kind = Kind.normal
-    for num in nums:
-        getattr(dev, f"current{num}").mean_value.kind = Kind.hinted
-
-
-def count_with_hinted_cpts(dev=xqem01, nums=(1, 3,)):
-    for num in range(1, len(list(dev.current_names.get()))+1):
-        getattr(dev, f"current{num}").mean_value.kind = Kind.normal
-    for num in nums:
-        getattr(dev, f"current{num}").mean_value.kind = Kind.hinted
-    yield from bp.count([dev], num=5)
+# The nslsii QuadEM reads and hints all four current mean values by default.
+# Per-channel readable/hint selection is intentionally not exposed; it returns
+# once ophyd-async provides a proper API for reconfiguring StandardDetector
+# readables (in progress upstream).
 
 
 class MyDetector(SingleTrigger, AreaDetector):

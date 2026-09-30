@@ -1191,10 +1191,10 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
     initial_FE_hgap_pos = FE_hgap_axis.position
     initial_FE_vgap_pos = FE_vgap_axis.position
 
-    initial_det_range = detector.em_range.get()               # The initial detector range
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+    initial_det_range = yield from bps.rd(detector.driver.range)                    # The initial detector range
+    initial_det_vals_reading = yield from bps.rd(detector.driver.values_per_read)   # The initial values per reading.
+    initial_det_avg_time = yield from bps.rd(detector.driver.averaging_time)        # The initial averaging time.
+    initial_det_int_time = yield from bps.rd(detector.driver.integration_time)      # The initial integration time.
 
     initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap opening
     initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap opening
@@ -1207,10 +1207,11 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
                    Diode_motor,Diode_pos, Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,
                    Exit_Slit_vgap_motor,Exit_Slit_vgap_pos)
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
+    # Set the detector settings to use for the scan.
+    yield from mv(detector.driver.range, det_range,
+                  detector.driver.values_per_read, det_vals_reading,
+                  detector.driver.averaging_time, det_avg_time,
+                  detector.driver.integration_time, det_int_time)
 
     #Run the scan
     if adaptive is False:
@@ -1228,10 +1229,11 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
                   #FE_hgap_axis,initial_FE_hgap_pos, FE_vgap_axis,initial_FE_vgap_pos
 
 
-    detector.em_range.put(initial_det_range)                    # The range to use for the scan
-    detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(initial_det_int_time)         # The integration time to use
+    # Restore the initial detector settings.
+    yield from mv(detector.driver.range, initial_det_range,
+                  detector.driver.values_per_read, initial_det_vals_reading,
+                  detector.driver.averaging_time, initial_det_avg_time,
+                  detector.driver.integration_time, initial_det_int_time)
 
     #Determine the location of the maximum intensity.
 
@@ -1395,10 +1397,10 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
 
     elif 'Gas_cell' in detector_location:
 
-        initial_det_range = detector.em_range.get()               # The initial detector range
-        initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-        initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-        initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+        initial_det_range = yield from bps.rd(detector.driver.range)                    # The initial detector range
+        initial_det_vals_reading = yield from bps.rd(detector.driver.values_per_read)   # The initial values per reading.
+        initial_det_avg_time = yield from bps.rd(detector.driver.averaging_time)        # The initial averaging time.
+        initial_det_int_time = yield from bps.rd(detector.driver.integration_time)      # The initial integration time.
 
         initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap opening
         initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap opening
@@ -1432,10 +1434,11 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
         yield from mv(Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,  Exit_Slit_vgap_motor,Exit_Slit_vgap_pos,
                       PGM_Energy_motor,PGM_Energy_pos,   diode_motor,Diode_pos)
 
-        detector.em_range.put(det_range)                    # The range to use for the scan
-        detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(det_int_time)         # The integration time to use.
+        # Set the detector settings to use for the scan.
+        yield from mv(detector.driver.range, det_range,
+                      detector.driver.values_per_read, det_vals_reading,
+                      detector.driver.averaging_time, det_avg_time,
+                      detector.driver.integration_time, det_int_time)
 
 
 
@@ -1494,10 +1497,11 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
                           PGM_Energy_motor,initial_PGM_Energy_pos,
                           diode_motor,initial_diode_pos)
 
-            detector.em_range.put(initial_det_range)                    # The range to use for the scan
-            detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-            detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-            detector.integration_time.put(initial_det_int_time)         # The integration time to use.
+            # Restore the initial detector settings.
+            yield from mv(detector.driver.range, initial_det_range,
+                          detector.driver.values_per_read, initial_det_vals_reading,
+                          detector.driver.averaging_time, initial_det_avg_time,
+                          detector.driver.integration_time, initial_det_int_time)
 
 
 
@@ -1705,10 +1709,10 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
     #Save the initial values of all moved motors so that they can be reset.
     initial_Und_gap = Und.position                             # The initial Undulator position.
     initial_PGM_Energy_pos = PGM_Energy_motor.position         # The initial PGM energy.
-    initial_det_range = detector.em_range.get()               # The initial detector range.
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+    initial_det_range = yield from bps.rd(detector.driver.range)                    # The initial detector range.
+    initial_det_vals_reading = yield from bps.rd(detector.driver.values_per_read)   # The initial values per reading.
+    initial_det_avg_time = yield from bps.rd(detector.driver.averaging_time)        # The initial averaging time.
+    initial_det_int_time = yield from bps.rd(detector.driver.integration_time)      # The initial integration time.
     initial_x_axis_pos = x_axis.position                       # The initial x_axis position.
     initial_y_axis_pos = y_axis.position                       # The initial y_axis position.
     initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap for the exit slit.
@@ -1724,10 +1728,11 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
                    Exit_Slit_hgap_motor,Exit_Slit_hgap_pos,  PGM_Energy_motor,PGM_Energy_pos,
                    FE_hgap_axis,FE_hgap_pos,    FE_vgap_axis,FE_vgap_pos,   Diode_motor,Diode_pos)
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
+    # Set the detector settings to use for the scan.
+    yield from mv(detector.driver.range, det_range,
+                  detector.driver.values_per_read, det_vals_reading,
+                  detector.driver.averaging_time, det_avg_time,
+                  detector.driver.integration_time, det_int_time)
 
     #ADD AN OPEN SHUTTER CALL HERE.
 
@@ -1769,10 +1774,11 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
                        Exit_Slit_hgap_motor,initial_Exit_Slit_hgap_pos,  PGM_Energy_motor,initial_PGM_Energy_pos,
                        FE_hgap_axis,initial_FE_hgap_pos,    FE_vgap_axis,initial_FE_vgap_pos,   Diode_motor,initial_Diode_pos   )
 
-        detector.em_range.put(initial_det_range)                    # The range to use for the scan
-        detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(initial_det_int_time)         # The integration time to use.
+        # Restore the initial detector settings.
+        yield from mv(detector.driver.range, initial_det_range,
+                      detector.driver.values_per_read, initial_det_vals_reading,
+                      detector.driver.averaging_time, initial_det_avg_time,
+                      detector.driver.integration_time, initial_det_int_time)
 
 
 
@@ -1828,8 +1834,10 @@ def ESM_setup_hints(DETS_str):
     '''
     This function is used to set the hints to a sub-set of the total value of possible attributes.
 
-    This function uses the 'set_primary' attribute of our detectors in order to change the list of
-    attributes in the .hints attribute.
+    Classic-ophyd detectors (cameras) have their component ``.kind`` attributes set directly.
+    ophyd-async QuadEM detectors always read and hint all four current mean values, so any
+    '@' channel spec is ignored for them (per-channel hint selection returns once ophyd-async
+    provides an API for it).
 
     PARAMETERS:
     -----------
@@ -1873,12 +1881,16 @@ def ESM_setup_hints(DETS_str):
             if i > 0:
                 DETS += ','
             DETS += DET_str.partition('@')[0]
+            det = ip.user_ns[DET_str.partition('@')[0]]
+            if isinstance(det, QuadEM):
+                # ophyd-async QuadEMs always read and hint all four current
+                # mean values; per-channel hint selection is not supported.
+                continue
             # DAMA (mrakitin) 20180606: channel_list_unpack() returns
             # a list of values, e.g:
-            #   ['qem12.current1.mean_value',
-            #    'qem12.current2.mean_value',
-            #    'qem12.current3.mean_value',
-            #    'qem12.current4.mean_value']
+            #   ['cam1.stats1.total',
+            #    'cam1.stats2.total',
+            #    ...]
             # that's why we need to loop through them.
             # Also, we need to cut the name of the device
             # ('qem12' in the example) from the string.
@@ -1894,6 +1906,10 @@ def ESM_setup_hints(DETS_str):
                 DETS += ','
             DETS += DET_str.partition('@')[0]
             det = ip.user_ns[DET_str.partition('@')[0]]
+            if isinstance(det, QuadEM):
+                # ophyd-async QuadEMs always read and hint all four current
+                # mean values; per-channel hint selection is not supported.
+                continue
             # set everytrhing unhinted
             for c in det.read_attrs:
                 getattr(det, c).kind = 'normal'
@@ -2123,7 +2139,7 @@ def _step_and_sample(motor, target, signal, settle, n, delay):
 def m3_adjust_hillclimb(
     *,
     motor=M3.Ry,
-    signal=qem08.current1.mean_value,
+    signal=qem08.current[1].mean_value,
     diag=M4AUdiag.trans,
     diag_in=-6,
     diag_out=2,
@@ -2142,7 +2158,7 @@ def m3_adjust_hillclimb(
     Parameters
     ----------
     motor : ophyd motor-like (e.g. ``M3.Ry``)
-    signal : ophyd Signal-like (e.g. ``qem08.current1.mean_value``)
+    signal : ophyd Signal-like (e.g. ``qem08.current[1].mean_value``)
     diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
     diag_in, diag_out : float
         Diagnostic insert/retract positions.
@@ -2493,7 +2509,7 @@ def _tune_core(
 def m3_adjust_centroid(
     *,
     motor=M3.Ry,
-    signal=qem08.current1.mean_value,
+    signal=qem08.current[1].mean_value,
     diag=M4AUdiag.trans,
     diag_in=-6,
     diag_out=2,
@@ -2520,7 +2536,7 @@ def m3_adjust_centroid(
     Parameters
     ----------
     motor : ophyd motor-like (e.g. ``M3.Ry``)
-    signal : ophyd Readable (e.g. ``qem08.current1.mean_value``)
+    signal : ophyd Readable (e.g. ``qem08.current[1].mean_value``)
     diag   : ophyd motor-like (e.g. ``M4AUdiag.trans``)
     diag_in, diag_out : float
         Diagnostic insert/retract positions.

@@ -201,15 +201,16 @@ def format_channel_name(DET,Channel,Value='total', dot = False):
             sep = '_'
 
         if 'qem' in DET.lower():
-            #if the detector is a qem.
+            #if the detector is a qem: ophyd-async child naming, '-' separated
+            #event field names regardless of 'dot'.
             if Channel == -1:
                 channel_name=''
                 for i in range(1,5):
                     if i > 1: channel_name+=','
-                    channel_name+=DET+sep+'current'+str(i)+sep+'mean_value'
+                    channel_name+=DET+'-current-'+str(i)+'-mean_value'
 
             else:
-                channel_name=DET+sep+'current'+str(Channel)+sep+'mean_value'
+                channel_name=DET+'-current-'+str(Channel)+'-mean_value'
 
         elif 'cam' in DET.lower():
             #if the detctor is a camera.

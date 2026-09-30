@@ -1,6 +1,4 @@
 from bluesky.plans import count
 from bluesky.callbacks import LiveTable
 
-
-assert qem07.connected
-RE(count([qem07]), LiveTable([qem07]))
+RE(count([qem07], num=5), LiveTable(qem07.hints["fields"]))
