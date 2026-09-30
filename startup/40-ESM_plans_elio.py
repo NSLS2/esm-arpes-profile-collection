@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
 from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
-from bluesky.plan_stubs import abs_set, mv
+from bluesky.plan_stubs import abs_set, mv, rd
 from bluesky.preprocessors import baseline_decorator, subs_decorator
 # from bluesky.callbacks import LiveTable,LivePlot, CallbackBase
 #from pyOlog.SimpleOlogClient import SimpleOlogClient
@@ -85,10 +85,10 @@ def ESM_check(return_all=False):
 
                            # Read the initial values for the 'Gas_cell' detector settings,
  
-    initial_det_range = detector.em_range.get()               # The initial detector range
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+    initial_det_range = yield from rd(detector.driver.range)                    # The initial detector range
+    initial_det_vals_reading = yield from rd(detector.driver.values_per_read)   # The initial values per reading.
+    initial_det_avg_time = yield from rd(detector.driver.averaging_time)        # The initial averaging time.
+    initial_det_int_time = yield from rd(detector.driver.integration_time)      # The initial integration time.
 
 
             ############  define the REFERENCE beamline configuration #########   
@@ -122,7 +122,7 @@ def ESM_check(return_all=False):
               ############  before measuring the new flux, read-in the latest reference flux  #########       
     
     h = next(iter(db(scan_type='Reference_Flux_Check')))
-    last_flux = h.table()['qem07_current1_mean_value']
+    last_flux = h.table()['qem07-current-1-mean_value']
 
 
               ############  set the beamline to REFERENCE configuration #########       
@@ -150,10 +150,10 @@ def ESM_check(return_all=False):
     
     yield from mv(Diode_motor,Diode_pos)
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
+    yield from mv(detector.driver.range, det_range,                     # The range to use for the scan
+                  detector.driver.values_per_read, det_vals_reading,    # The values per reading to use.
+                  detector.driver.averaging_time, det_avg_time,         # The averaging time to use.
+                  detector.driver.integration_time, det_int_time)       # The integration time to use.
                 
 
               ############  measure the flux and compare with previous #########       
@@ -164,7 +164,7 @@ def ESM_check(return_all=False):
     
         # Read in the flux just measured in the same conditions as last time to be able to compare
     h = next(iter(db(scan_type='Reference_Flux_Check')))
-    new_flux = h.table()['qem07_current1_mean_value']
+    new_flux = h.table()['qem07-current-1-mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
     
@@ -198,10 +198,10 @@ def ESM_check(return_all=False):
         yield from mv(Diode_motor,initial_Diode_pos)
 
 
-        detector.em_range.put(initial_det_range)                    # The range to use for the scan
-        detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(initial_det_int_time)         # The integration time to use.
+        yield from mv(detector.driver.range, initial_det_range,                     # The range to use for the scan
+                      detector.driver.values_per_read, initial_det_vals_reading,    # The values per reading to use.
+                      detector.driver.averaging_time, initial_det_avg_time,         # The averaging time to use.
+                      detector.driver.integration_time, initial_det_int_time)       # The integration time to use.
         
 
     return
@@ -389,10 +389,10 @@ def ESM_check_test(return_all=True):
     
        # Read the initial values for the 'Gas_cell' detector settings, PGM slits, PGM energy and diode position
 
-    initial_det_range = detector.em_range.get()               # The initial detector range
-    initial_det_vals_reading = detector.values_per_read.get() # The initial values per reading.
-    initial_det_avg_time = detector.averaging_time.get()      # The initial averaging time.
-    initial_det_int_time = detector.integration_time.get()    # The initial integration time.
+    initial_det_range = yield from rd(detector.driver.range)                    # The initial detector range
+    initial_det_vals_reading = yield from rd(detector.driver.values_per_read)   # The initial values per reading.
+    initial_det_avg_time = yield from rd(detector.driver.averaging_time)        # The initial averaging time.
+    initial_det_int_time = yield from rd(detector.driver.integration_time)      # The initial integration time.
 
     initial_Exit_Slit_hgap_pos = Exit_Slit_hgap_motor.position # The initial horizontal gap opening
     initial_Exit_Slit_vgap_pos = Exit_Slit_vgap_motor.position # The initial vertical gap opening
@@ -404,7 +404,7 @@ def ESM_check_test(return_all=True):
 
        # Read in the flux measured last time in the same condition to be able to compare with the new value measured now
     h = next(iter(db(scan_type='Reference_Flux_Check')))
-    last_flux = h.table()['qem07_current1_mean_value']
+    last_flux = h.table()['qem07-current-1-mean_value']
 
     #Move the values to the starting reference positions for the scan.
     
@@ -414,10 +414,10 @@ def ESM_check_test(return_all=True):
                   PGM_Energy_motor,PGM_Energy_pos,
                   Diode_motor,Diode_pos)
 
-    detector.em_range.put(det_range)                    # The range to use for the scan
-    detector.values_per_read.put(det_vals_reading)      # The values per reading to use.
-    detector.averaging_time.put(det_avg_time)           # The averaging time to use.
-    detector.integration_time.put(det_int_time)         # The integration time to use.
+    yield from mv(detector.driver.range, det_range,                     # The range to use for the scan
+                  detector.driver.values_per_read, det_vals_reading,    # The values per reading to use.
+                  detector.driver.averaging_time, det_avg_time,         # The averaging time to use.
+                  detector.driver.integration_time, det_int_time)       # The integration time to use.
                 
     #ADD AN OPEN SHUTTER CALL HERE
 
@@ -426,7 +426,7 @@ def ESM_check_test(return_all=True):
 
            # Read in the flux just measured in the same conditions as last time to be able to compare
     h = next(iter(db(scan_type='Reference_Flux_Check')))
-    new_flux = h.table()['qem07_current1_mean_value']
+    new_flux = h.table()['qem07-current-1-mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
     
@@ -459,10 +459,10 @@ def ESM_check_test(return_all=True):
                       PGM_Energy_motor,initial_PGM_Energy_pos,
                       Diode_motor,initial_Diode_pos)
 
-        detector.em_range.put(initial_det_range)                    # The range to use for the scan
-        detector.values_per_read.put(initial_det_vals_reading)      # The values per reading to use.
-        detector.averaging_time.put(initial_det_avg_time)           # The averaging time to use.
-        detector.integration_time.put(initial_det_int_time)         # The integration time to use.
+        yield from mv(detector.driver.range, initial_det_range,                     # The range to use for the scan
+                      detector.driver.values_per_read, initial_det_vals_reading,    # The values per reading to use.
+                      detector.driver.averaging_time, initial_det_avg_time,         # The averaging time to use.
+                      detector.driver.integration_time, initial_det_int_time)       # The integration time to use.
         
  
     #ADD AN OPEN SHUTTER CALL HERE
@@ -475,7 +475,7 @@ def sh_test():
     caput('XF:21ID-PPS{Sh:FE}Cmd:Cls-Cmd', 1)
     #caput XF:21IDC-BI{EM:7}EM180:Acquire 0
     uid=yield from (scan_time([detector],num=1, scan_type=scan_type_str))  
-    value = db[-1].table().qem07_current2_mean_value
+    value = db[-1].table()['qem07-current-2-mean_value']
     caput('XF:21IDC-BI{EM:7}EM180:CurrentOffset1', value)
     caput('XF:21ID-PPS{Sh:FE}Cmd:Opn-Cmd', 1)
     return 

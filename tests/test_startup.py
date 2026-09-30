@@ -78,11 +78,29 @@ def mock_services():
 @pytest.fixture
 def mock_nslsii():
     def mock_configure_base(ipython_user_ns, beamline_name, **kwargs):
-        ipython_user_ns['RE'] = MagicMock()
+        from bluesky import RunEngine
+        # A real RunEngine is required: init_devices() in 30-detectors.py connects
+        # ophyd-async devices via call_in_bluesky_event_loop, and 04-tiled_writer.py
+        # reads RE.md["data_session"].
+        ipython_user_ns['RE'] = RunEngine(md={"data_session": "pass-000000", "cycle": "test"})
         ipython_user_ns['db'] = MagicMock()
         ipython_user_ns['sd'] = MagicMock()
 
     with patch('nslsii.configure_base', side_effect=mock_configure_base):
+        yield
+
+
+@pytest.fixture
+def mock_ophyd_async_devices():
+    """Force ophyd-async devices to connect in mock mode (no CA traffic)."""
+    from ophyd_async.core import Device
+
+    original_connect = Device.connect
+
+    async def mock_connect(self, mock=False, timeout=10.0, force_reconnect=False):
+        return await original_connect(self, mock=True)
+
+    with patch.object(Device, "connect", mock_connect):
         yield
 
 
@@ -96,7 +114,7 @@ def startup_dir():
 
 
 @pytest.fixture
-def startup_shell(mock_all_ophyd_devices, mock_services, mock_nslsii, startup_dir):
+def startup_shell(mock_all_ophyd_devices, mock_ophyd_async_devices, mock_services, mock_nslsii, startup_dir):
     from IPython.core.interactiveshell import InteractiveShell
     from IPython.core.profiledir import ProfileDir
     
@@ -123,3 +141,27 @@ def test_startup_namespace(startup_shell):
     assert "RE" in globals(), "RunEngine not found"
     assert "db" in globals(), "Databroker not found"
     assert "sd" in globals(), "SupplementalData not found"
+
+
+def test_qem_hint_fields(startup_shell):
+    qem07 = globals()["qem07"]
+    assert qem07.hints["fields"] == [f"qem07-current-{i}-mean_value" for i in range(1, 5)]
+
+
+def test_qem_count_emits_current_means(startup_shell):
+    import asyncio
+    from bluesky.plans import count
+    from ophyd_async.core import callback_on_mock_put, set_mock_value
+
+    qem07, RE = globals()["qem07"], globals()["RE"]
+
+    def clear_after_start(value, **kwargs):
+        # Mock-mode Acquire never self-clears; complete it after the RE sets it.
+        if value:
+            asyncio.get_running_loop().call_soon(set_mock_value, qem07.driver.acquire, False)
+
+    docs = []
+    with callback_on_mock_put(qem07.driver.acquire, clear_after_start):
+        RE(count([qem07]), lambda name, doc: docs.append((name, doc)))
+    event = next(doc for name, doc in docs if name == "event")
+    assert {f"qem07-current-{i}-mean_value" for i in range(1, 5)} <= set(event["data"])

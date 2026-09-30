@@ -31,8 +31,8 @@ bluesky-tiled-plugins = ">=2.0.9,<3"
 nexusformat = ">=2.0.3,<3"
 
 [feature.profile.pypi-dependencies]
-ophyd-async = { version = ">=0.21.1, <0.22", extras = ["ca", "pva"] }
-nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "380bd34" }
+ophyd-async = { version = ">=0.21.3, <0.22", extras = ["ca", "pva"] }
+nslsii = { git = "https://github.com/thopkins32/nslsii.git", rev = "0d69a46591135ea5ed81e7deb7f1326b612946f4" }
 
 
 [feature.qs.dependencies]

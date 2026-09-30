@@ -43,13 +43,13 @@ def macro1():
                                  min(Erange[1]*Ephoton,Eph.Range[grating][1]),0.5)
 
         yield from mv(BTA2diag.trans,-87)
-        qem07.em_range.put('12 pC')
+        yield from mv(qem07.driver.range, '12 pC')
 
         uid = yield from scan_1D('qem07@4',PGM.Energy,Erange[0]*Ephoton,
                                  min(Erange[1]*Ephoton,Eph.Range[grating][1]),0.5)
 
         yield from mv(BTA2diag.trans,-63)
-        qem07.em_range.put('350 pC')
+        yield from mv(qem07.driver.range, '350 pC')
 
 
 def macro2():
