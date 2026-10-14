@@ -2797,7 +2797,7 @@ class TrajectoryFlyer:
                 self._buffer.append(
                     {
                         "time": now,
-                        "data": {m.name: m.readback.get() for m in self._motors},
+                        "data": {m.name: m.user_readback.get() for m in self._motors},
                         "timestamps": {m.name: now for m in self._motors},
                     }
                 )
