@@ -123,3 +123,28 @@ def test_startup_namespace(startup_shell):
     assert "RE" in globals(), "RunEngine not found"
     assert "db" in globals(), "Databroker not found"
     assert "sd" in globals(), "SupplementalData not found"
+
+
+def test_move_to_retracts_other_epu_before_beamline_motion(startup_shell):
+    namespace = startup_shell.user_ns
+
+    for epu, other_epu_name in (("57", "EPU105"), ("105", "EPU57")):
+        selected_epu = namespace[f"EPU{epu}"]
+        with patch.object(selected_epu.gap, "safe_to_actuate", return_value=False):
+            plan = namespace["Eph"].move_to(200, grating="800", EPU=epu)
+            first_message = next(plan)
+
+        assert first_message.command == "set"
+        assert first_message.obj is namespace[other_epu_name].gap
+        assert first_message.args == (220,)
+
+
+def test_move_to_skips_retraction_when_other_epu_is_out(startup_shell):
+    namespace = startup_shell.user_ns
+    selected_epu = namespace["EPU57"]
+
+    with patch.object(selected_epu.gap, "safe_to_actuate", return_value=True):
+        plan = namespace["Eph"].move_to(200, grating="800", EPU="57")
+        first_message = next(plan)
+
+    assert first_message.obj is not selected_epu.gap.other
