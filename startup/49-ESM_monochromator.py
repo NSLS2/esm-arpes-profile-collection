@@ -519,9 +519,10 @@ class ESM_monochromator_device:
         branch : str
             The beamline branch which is to be used, can be 'A' (default) or 'B'.
 
-        EPU : str
-            The undulator to use, can be '57' (default, high energy) or '105'(low energy).
-
+        EPU : str or None
+            The undulator to use, either '57' (default, high energy) or '105' (low energy).
+            Before it moves, the other EPU is moved to its out position when necessary.
+            ``None`` disables undulator motion.
         c : str, optional
             This is an optional call to define if the c value should be calculated or if the pre-defined
             dictionary should be used.
@@ -540,6 +541,11 @@ class ESM_monochromator_device:
             if (self.Range['EPU'+EPU][0]> photon_energy) or (self.Range['EPU'+EPU][1]< photon_energy):
                 raise RuntimeError('photon energy out of range for EPU,'+
                                    'use Eph.Range to determine the correct grating and EPU')
+
+        if EPU is not None:
+            epu_obj = ip.user_ns['EPU'+EPU]
+            if not epu_obj.gap.safe_to_actuate():
+                yield from mv(epu_obj.gap.other, 220)
 
         #shut the front end shutter prior to moving.
         # DAMA (mrakitin): commenting it out on 06/02/2018

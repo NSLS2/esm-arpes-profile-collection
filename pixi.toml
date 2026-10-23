@@ -1,16 +1,14 @@
 [workspace]
 channels = ["conda-forge"]
 name = "esm-arpes-profile-collection"
-platforms = ["linux-64"]
+platforms = [{ platform = "linux-64", glibc = "2.17" }]
 version = "2026.3.0"
-
-[system-requirements]
-libc = "2.17"
+requires-pixi = ">=0.82.1"
 
 [feature.profile.dependencies]
 bluesky-base = ">=1.15.1,<2"
 bluesky-queueserver = ">=0.0.25,<0.0.26"
-matplotlib-base= ">=3.10.9,<4"
+matplotlib-base = ">=3.10.9,<4"
 networkx = ">=3.4.2,<4"
 # nslsii = "==0.11.8"
 numpy = "*"
@@ -29,10 +27,12 @@ p4p = ">=4.2.2,<5"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 bluesky-tiled-plugins = ">=2.0.9,<3"
 nexusformat = ">=2.0.3,<3"
+ca-certificates = ">=2026.10.19"
+certifi = ">=2026.10.19"
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">=0.21.1, <0.22", extras = ["ca", "pva"] }
-nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "380bd34" }
+nslsii = { git = "https://github.com/nmaytan/nslsii.git", rev = "854c440" }
 
 
 [feature.qs.dependencies]
@@ -67,10 +67,18 @@ pytest = ">=9.1.1,<10"
 [feature.test.tasks]
 tests = "pytest tests"
 
-[environments]
-terminal = {features=["profile", "terminal"], solve-group="profile"}
-qs = {features=["profile", "qs"], solve-group="profile"}
-test = {features=["profile", "test"], solve-group="profile"}
+[environments.test]
+features = ["profile", "test"]
+solve-group = "profile"
+
+[environments.terminal]
+features = ["profile", "terminal"]
+solve-group = "profile"
+
+[environments.qs]
+features = ["profile", "qs"]
+solve-group = "profile"
 
 [dependencies]
 python-confluent-kafka = ">=2.15.0,<3"
+ca-certificates = ">=2026.10.19"
