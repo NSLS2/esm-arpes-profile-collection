@@ -1036,6 +1036,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.1.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
+      - pypi: /home2/xf21id1/git/bsstudio
       - pypi: git+https://github.com/nmaytan/nslsii.git?rev=854c440#854c440e928d540358304d679891ca61c4020e9f
       - pypi: https://files.pythonhosted.org/packages/0e/fd/aad3337b0d14352589af31719112d25f0f27958547c81ed0dc01301a1b3a/ophyd_async-0.21.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/23/ef/3b82c9a5c6fe4bcc7ebafbc4a06efe4f631929441bddd5d53541434fb941/pyOlog-4.5.1-py3-none-any.whl
@@ -9340,6 +9341,9 @@ packages:
   - pkg:pypi/zipp?source=hash-mapping
   size: 22963
   timestamp: 1749421737203
+- pypi: /home2/xf21id1/git/bsstudio
+  name: bsstudio
+  requires_python: '>=3.6'
 - pypi: git+https://github.com/nmaytan/nslsii.git?rev=854c440#854c440e928d540358304d679891ca61c4020e9f
   name: nslsii
   version: 0+untagged.798.g854c440
