@@ -71,7 +71,7 @@ tiled_inserter = BufferingWrapper(tiled_inserter)  # in-process queue: RE never 
 # Configure RE + other services
 nslsii.configure_base(get_ipython().user_ns,
                       tiled_inserter,
-                      publish_documents_with_kafka=True,
+                      publish_documents_with_kafka="arpes",
                       redis_prefix="esm-arpes-",
                       redis_url="info.esm.nsls2.bnl.gov")
 
