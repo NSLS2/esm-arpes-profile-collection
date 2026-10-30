@@ -36,10 +36,12 @@ def patch_resource(doc):
     return doc
 
 # Initialize the Tiled client and the TiledWriter
+TILED_BACKUP_ROOT = "/nsls2/data/esm/arpes/shared/config/bluesky/tiled_backup"
 api_key = os.environ.get("TILED_BLUESKY_WRITING_API_KEY_ARPES")
 tiled_writing_client_sql = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)['arpes']['migration']
+tiled_writing_client_sql.context.http_client.headers["tiled-qos"] = "acquisition"
 tw = TiledWriter(client = tiled_writing_client_sql,
-                 backup_directory="/tmp/tiled_backup",
+                 backup_directory=f"{TILED_BACKUP_ROOT}/sql",
                  # patches = {"descriptor": patch_descriptor,
                  #            "resource": patch_resource},
                  spec_to_mimetype= {
