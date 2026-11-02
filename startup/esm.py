@@ -224,7 +224,7 @@ def ESM_check(return_all=False):
     uid=yield from (scan_time([detector],num=1,scan_type='Reference_Flux_Check'))  
     
         # Read in the flux just measured in the same conditions as last time to be able to compare
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
@@ -486,7 +486,7 @@ def ESM_check_test(return_all=True):
 
 
            # Read in the flux just measured in the same conditions as last time to be able to compare
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
@@ -536,7 +536,7 @@ def sh_test():
     caput('XF:21ID-PPS{Sh:FE}Cmd:Cls-Cmd', 1)
     #caput XF:21IDC-BI{EM:7}EM180:Acquire 0
     uid=yield from (scan_time([detector],num=1, scan_type=scan_type_str))  
-    value = db[-1].table().qem07_current2_mean_value
+    value = db[uid].table().qem07_current2_mean_value
     caput('XF:21IDC-BI{EM:7}EM180:CurrentOffset1', value)
     caput('XF:21ID-PPS{Sh:FE}Cmd:Opn-Cmd', 1)
     return 

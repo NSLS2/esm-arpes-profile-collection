@@ -1236,8 +1236,7 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
     #Determine the location of the maximum intensity.
 
     if uid is not None:
-        hdr=db[-1]
-        output=max_in_1D(hdr.start['scan_id'])
+        output=max_in_1D(uid)
         yield from mv( x_axis,initial_x_pos ) # this move helps with the backlash issue I have noticed
         yield from mv( x_axis,output[0] )
         #set the scan axis to the new value.
@@ -1737,8 +1736,7 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
 
 
     if uid is not None:
-        hdr=db[uid]
-        output=max_in_2D(hdr.start.scan_id)
+        output=max_in_2D(uid)
         print (output)
 
         max_y=output[0]
