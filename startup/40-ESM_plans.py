@@ -2820,28 +2820,6 @@ class TrajectoryFlyer:
         else:
             self._done.set_finished()
 
-
-# ---------------------------------------------------------------------------
-# Stand-ins for the beamline's scans. NOTE: nothing below knows the snake
-# exists -- these are ordinary plans over ordinary devices.
-# ---------------------------------------------------------------------------
-
-
-def move_energy(energy, value):
-    """Stand-in for the beamline's complex custom energy-move plan."""
-    yield from bps.mv(energy, value)
-
-
-def xas(det, energy, points):
-    @bpp.stage_decorator([det])
-    @bpp.run_decorator(md={"plan_name": "xas"})
-    def inner():
-        for e in points:
-            yield from move_energy(energy, e)
-            yield from bps.trigger_and_read([det, energy])
-
-    return (yield from inner())
-
 # ---------------------------------------------------------------------------
 # Implementation of flying with speed adjustment to motors
 # ---------------------------------------------------------------------------
