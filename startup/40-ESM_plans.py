@@ -2732,7 +2732,7 @@ class TrajectoryFlyer:
         self.name = name
         self._motors = list(motors)
         self._waypoints = iter(waypoints)  # shared across runs: snake resumes
-        self._last = (None,) * len(motors)
+        self._last = (None,) * len(self._motors)
         self._stop_requested = threading.Event()
         self._thread = None
         self._done = None
@@ -2743,6 +2743,7 @@ class TrajectoryFlyer:
     def kickoff(self):
         if self._thread is not None and self._thread.is_alive():
             raise RuntimeError(f"{self.name} is already flying")
+        self._buffer = []
         self._stop_requested.clear()
         self._done = StatusBase()
         self._thread = threading.Thread(
@@ -2801,7 +2802,9 @@ class TrajectoryFlyer:
                         "timestamps": {m.name: now for m in self._motors},
                     }
                 )
-        finally:
+        except Exception as exc:
+            self._done.set_exception(exc)
+        else:
             self._done.set_finished()
 
 
