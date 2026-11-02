@@ -2826,3 +2826,65 @@ def xas(det, energy, points):
 
     return (yield from inner())
 
+# ---------------------------------------------------------------------------
+# Implementation of flying with speed adjustment to motors
+# ---------------------------------------------------------------------------
+
+def fly_during_speed(plan, trajectory, motor_speeds):
+    """
+    Fly during a plan while temporarily adjusting motor speeds.
+
+    Parameters
+    ----------
+    plan : generator
+        The plan to execute while flying. Example: RE.count(det)
+    trajectory : tuple
+        A tuple containing the motors and their respective ranges.
+        The first range corresponds to the fast axis, followed by slow axes.
+    motor_speeds : dict
+        A mapping of motors to their temporary speed settings.
+
+    Yields
+    ------
+    dict
+        The result of the plan execution.
+    """
+    motors, ranges = trajectory
+    fast, *slows = ranges
+    if len(motors) != len(ranges):
+        raise ValueError(
+            "trajectory must provide one range for each motor "
+            "(fast range first, then slow-axis ranges)"
+        )
+
+    flyer = TrajectoryFlyer(
+        "trajectory",
+        motors,
+        snake_forever(fast, slows),
+    )
+
+    # motor_speeds maps each motor to its temporary speed setting
+    original_speeds = {}
+    for motor in motor_speeds:
+        signal = motor.velocity
+        reading = yield from bps.read(signal)
+        original_speeds[motor] = reading[signal.name]["value"]
+
+    def run():
+        set_args = [
+            item
+            for motor, speed in motor_speeds.items()
+            for item in (motor.velocity, speed)
+        ]
+        yield from bps.mv(*set_args)
+        yield from bpp.fly_during_wrapper(plan, [flyer])
+
+    def restore():
+        restore_args = [
+            item
+            for motor, speed in original_speeds.items()
+            for item in (motor.velocity, speed)
+        ]
+        yield from bps.mv(*restore_args)
+
+    yield from bpp.finalize_wrapper(run(), restore())
