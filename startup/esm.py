@@ -183,6 +183,7 @@ def ESM_check(return_all=False):
 
               ############  before measuring the new flux, read-in the latest reference flux  #########       
     
+    flush_tiled()
     # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
     h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
@@ -226,6 +227,7 @@ def ESM_check(return_all=False):
     uid=yield from (scan_time([detector],num=1,scan_type='Reference_Flux_Check'))  
     
         # Read in the flux just measured in the same conditions as last time to be able to compare
+    flush_tiled()
     h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
@@ -466,6 +468,7 @@ def ESM_check_test(return_all=True):
     #ADD A CLOSE SHUTTER CALL HERE
 
        # Read in the flux measured last time in the same condition to be able to compare with the new value measured now
+    flush_tiled()
     # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
     h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
@@ -489,6 +492,7 @@ def ESM_check_test(return_all=True):
 
 
            # Read in the flux just measured in the same conditions as last time to be able to compare
+    flush_tiled()
     h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
@@ -539,6 +543,7 @@ def sh_test():
     caput('XF:21ID-PPS{Sh:FE}Cmd:Cls-Cmd', 1)
     #caput XF:21IDC-BI{EM:7}EM180:Acquire 0
     uid=yield from (scan_time([detector],num=1, scan_type=scan_type_str))  
+    flush_tiled()
     value = db[uid].table().qem07_current2_mean_value
     caput('XF:21IDC-BI{EM:7}EM180:CurrentOffset1', value)
     caput('XF:21ID-PPS{Sh:FE}Cmd:Opn-Cmd', 1)

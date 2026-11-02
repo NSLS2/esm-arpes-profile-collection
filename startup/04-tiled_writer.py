@@ -54,6 +54,22 @@ tw = TiledWriter(client = tiled_writing_client_sql,
 # Thread-safe wrapper for TiledWriter
 tw = BufferingWrapper(tw)
 
+TILED_FLUSH_TIMEOUT = 30  # seconds
+
+def flush_tiled(timeout=TILED_FLUSH_TIMEOUT):
+    """Wait until the SQL TiledWriter has processed all documents emitted so far.
+
+    `tw` writes in a background thread, so a run may not be in Tiled yet when
+    the RunEngine moves on. Call this before reading a run back through `db`
+    (which reads the node `tw` writes to). Raises if the buffer has not drained
+    within `timeout` seconds, instead of reading a missing or incomplete run.
+    """
+    if not tw.flush(timeout=timeout):
+        raise RuntimeError(
+            f"The Tiled writer did not finish writing within {timeout} s; "
+            "not reading the run back from db."
+        )
+
 # Subscribe the TiledWriter
 RE.md["tiled_access_tags"] = (RE.md["data_session"],)
 RE.subscribe(tw)
