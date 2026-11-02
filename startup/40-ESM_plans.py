@@ -2737,6 +2737,7 @@ class TrajectoryFlyer:
         self._thread = None
         self._done = None
         self._buffer = []
+        self._motion_lock = threading.Lock()
 
     # -- Flyable interface --------------------------------------------------
 
@@ -2771,8 +2772,14 @@ class TrajectoryFlyer:
 
     def stop(self, *, success=False):
         self._stop_requested.set()
-        for m in self._motors:
-            m.stop(success=success)
+
+        with self._motion_lock:
+            for m in self._motors:
+                m.stop(success=success)
+
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join()
 
     def read_configuration(self):
         return {}
@@ -2784,14 +2791,20 @@ class TrajectoryFlyer:
 
     def _jog(self):
         try:
-            while not self._stop_requested.is_set():
-                point = next(self._waypoints)
-                statuses = [
-                    m.set(target)
-                    for m, target, prev in zip(self._motors, point, self._last)
-                    if target != prev
-                ]
-                self._last = point
+            while True:
+                with self._motion_lock:
+                    if self._stop_requested.is_set():
+                        break
+                    point = next(self._waypoints)
+                    statuses = [
+                        m.set(target)
+                        for m, target, prev in zip(
+                            self._motors, point, self._last
+                        )
+                        if target != prev
+                    ]
+                    self._last = point
+
                 for st in statuses:
                     st.wait()
                 now = time.time()
