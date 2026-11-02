@@ -13,6 +13,7 @@ from collections import ChainMap
 import math
 import re
 from boltons.iterutils import chunked
+from tiled.queries import Key
 
 
 
@@ -182,7 +183,8 @@ def ESM_check(return_all=False):
 
               ############  before measuring the new flux, read-in the latest reference flux  #########       
     
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
+    h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
 
 
@@ -464,7 +466,8 @@ def ESM_check_test(return_all=True):
     #ADD A CLOSE SHUTTER CALL HERE
 
        # Read in the flux measured last time in the same condition to be able to compare with the new value measured now
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
+    h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
 
     #Move the values to the starting reference positions for the scan.
