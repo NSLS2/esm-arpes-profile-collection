@@ -11,6 +11,8 @@ from IPython.terminal.prompts import Prompts, Token
 from tiled.client import from_profile, from_uri
 from databroker import Broker
 
+from bluesky_tiled_plugins import BufferingWrapper, TiledInserter
+
 
 os.environ["MPLBACKEND"] = "Qt5Agg"
 
@@ -49,26 +51,26 @@ if not (tiled_reading_api_key := apikey_redis_client.get("esm-arpes-apikey-activ
 tiled_reading_client = from_uri("http://tiled.nsls2.bnl.gov", api_key=tiled_reading_api_key, remember_me=False)["arpes"]["migration"]
 tiled_reading_client.context.http_client.headers['tiled-qos'] = 'acquisition'
 
-
 # Set timeout for all EpicsSignalBase objects
 EpicsSignalBase.set_defaults(timeout=10.0, connection_timeout=10.0)
 
 # Configure a Tiled writing client
-tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"])["arpes"]["raw"]
-tiled_writing_client.context.http_client.headers['tiled-qos'] = 'acquisition'
+TILED_BACKUP_ROOT = "/nsls2/data/esm/arpes/shared/config/bluesky/tiled_backup"
+tiled_writing_client = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_ARPES"])["arpes"]
+tiled_writing_client_raw = tiled_writing_client["raw"]
+tiled_writing_client_raw.context.http_client.headers['tiled-qos'] = 'acquisition'
 
-class TiledInserter:
-    name = 'arpes'
-
-    def insert(self, name, doc):
-        tiled_writing_client.post_document(name, doc)
-
-tiled_inserter = TiledInserter()
+tiled_inserter = TiledInserter(
+    tiled_writing_client_raw,
+    "arpes",
+    backup_directory=f"{TILED_BACKUP_ROOT}/raw",
+)
+tiled_inserter = BufferingWrapper(tiled_inserter)  # in-process queue: RE never blocks
 
 # Configure RE + other services
 nslsii.configure_base(get_ipython().user_ns,
                       tiled_inserter,
-                      publish_documents_with_kafka=True,
+                      publish_documents_with_kafka="arpes",
                       redis_prefix="esm-arpes-",
                       redis_url="info.esm.nsls2.bnl.gov")
 
