@@ -13,6 +13,7 @@ from collections import ChainMap
 import math
 import re
 from boltons.iterutils import chunked
+from tiled.queries import Key
 
 
 
@@ -182,7 +183,9 @@ def ESM_check(return_all=False):
 
               ############  before measuring the new flux, read-in the latest reference flux  #########       
     
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    flush_tiled()
+    # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
+    h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
 
 
@@ -224,7 +227,8 @@ def ESM_check(return_all=False):
     uid=yield from (scan_time([detector],num=1,scan_type='Reference_Flux_Check'))  
     
         # Read in the flux just measured in the same conditions as last time to be able to compare
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    flush_tiled()
+    h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
@@ -464,7 +468,9 @@ def ESM_check_test(return_all=True):
     #ADD A CLOSE SHUTTER CALL HERE
 
        # Read in the flux measured last time in the same condition to be able to compare with the new value measured now
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    flush_tiled()
+    # Newest reference run: the catalog is ordered oldest -> newest, so take the last match.
+    h = db[tiled_reading_client.search(Key('start.scan_type') == 'Reference_Flux_Check').keys().last()]
     last_flux = h.table()['qem07_current1_mean_value']
 
     #Move the values to the starting reference positions for the scan.
@@ -486,7 +492,8 @@ def ESM_check_test(return_all=True):
 
 
            # Read in the flux just measured in the same conditions as last time to be able to compare
-    h = next(iter(db(scan_type='Reference_Flux_Check')))
+    flush_tiled()
+    h = db[uid]
     new_flux = h.table()['qem07_current1_mean_value']
 
     print('old_flux = %e, new_flux = %e, prc_diff = %f' %(last_flux, new_flux, (new_flux-last_flux)/new_flux))
@@ -536,7 +543,8 @@ def sh_test():
     caput('XF:21ID-PPS{Sh:FE}Cmd:Cls-Cmd', 1)
     #caput XF:21IDC-BI{EM:7}EM180:Acquire 0
     uid=yield from (scan_time([detector],num=1, scan_type=scan_type_str))  
-    value = db[-1].table().qem07_current2_mean_value
+    flush_tiled()
+    value = db[uid].table().qem07_current2_mean_value
     caput('XF:21IDC-BI{EM:7}EM180:CurrentOffset1', value)
     caput('XF:21ID-PPS{Sh:FE}Cmd:Opn-Cmd', 1)
     return 
@@ -849,6 +857,7 @@ def ss_csv(f_nm,sc_num, motor, det):
                    detector        
 		   saves in csv format the last run'.
 	'''								
+        flush_tiled()  # wait for buffered documents to reach Tiled
         hdr = db[sc_num]
         if motor == 'time': 
                 df = hdr.table(fields=[det])
