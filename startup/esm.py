@@ -857,6 +857,7 @@ def ss_csv(f_nm,sc_num, motor, det):
                    detector        
 		   saves in csv format the last run'.
 	'''								
+        flush_tiled()  # wait for buffered documents to reach Tiled
         hdr = db[sc_num]
         if motor == 'time': 
                 df = hdr.table(fields=[det])
