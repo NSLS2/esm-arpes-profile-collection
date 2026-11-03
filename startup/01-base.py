@@ -11,8 +11,7 @@ from IPython.terminal.prompts import Prompts, Token
 from tiled.client import from_profile, from_uri
 from databroker import Broker
 
-from bluesky.callbacks.buffer import BufferingWrapper
-from bluesky_tiled_plugins import TiledInserter
+from bluesky_tiled_plugins import BufferingWrapper, TiledInserter
 
 
 os.environ["MPLBACKEND"] = "Qt5Agg"
