@@ -2846,6 +2846,7 @@ def fly_during_speed(plan, trajectory, motor_speeds):
     """
     motors, ranges = trajectory
     fast, *slows = ranges
+    slows = [(lo, hi, int((hi - lo) / step)) for lo, hi, step in slows]
     if len(motors) != len(ranges):
         raise ValueError(
             "trajectory must provide one range for each motor "
