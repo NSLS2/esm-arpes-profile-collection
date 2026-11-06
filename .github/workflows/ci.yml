@@ -32,7 +32,8 @@ jobs:
           pixi-version: v0.82.1
           cache: false
           environments : test
-          frozen: true
+          frozen: false
+          locked: false
 
       - name: Run pytest
         run: pixi run tests
