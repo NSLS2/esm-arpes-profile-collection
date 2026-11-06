@@ -50,6 +50,7 @@ def ESM_export(scan_ID,filename):
             The file path, and file name, of the file that was created.
 
         '''
+        flush_tiled()  # wait for buffered documents to reach Tiled
         #reference the header file for the scan to be saved.
         hdr=db[scan_ID]
 
@@ -411,6 +412,7 @@ def fit_Gauss_1Dseries(uid,initial_guess):
 
     '''
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     #reference the data
     hdr=db[uid]
 
@@ -463,6 +465,7 @@ def max_in_1D(scan_id):
 
     '''
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     scan = db[scan_id]
     if scan.start['plot_Xaxis'][0].startswith('FE'):
         Xname = scan.start['plot_Xaxis'][0].replace('_readback', '_setpoint')
@@ -491,6 +494,7 @@ def max_in_2D(scan_id):
 
     '''
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     scan = db[scan_id]
     if scan.start.plot_Xaxis[0].startswith('FE'):
         Xname = scan.start['plot_Xaxis'][0].replace('_readback', '_setpoint')
@@ -535,6 +539,8 @@ def scan_info(scan_id_list,Baseline=False,Detector=False):
          Possible output string for formatting.
 
     '''
+
+    flush_tiled()  # wait for buffered documents to reach Tiled
 
     #define the output string
     f_string=''
@@ -706,6 +712,7 @@ def XY_max(scan_id):
     ''' 
     finds the max value (Y) of a scan (scan_id) and returns it toghether with the correponding X value
     '''
+    flush_tiled()  # wait for buffered documents to reach Tiled
     hdr = db[scan_id]
     Y = hdr.table(fields = hdr.start['plot_Yaxis'])
     Y_max = Y.max()[1]

@@ -2,6 +2,8 @@ import csv
 import functools
 from collections.abc import Sequence
 import itertools
+import threading
+import time
 
 import numpy as np
 import pandas as pd
@@ -9,6 +11,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import scipy.optimize as opt
 import os
+import bluesky.plans as bp
 from bluesky.plans import scan, adaptive_scan, spiral_fermat, spiral,scan_nd
 from bluesky.plan_stubs import abs_set, mv, caching_repeater, unstage_all
 from bluesky.preprocessors import baseline_decorator, subs_decorator, run_decorator, stub_wrapper, plan_mutator, finalize_wrapper
@@ -16,6 +19,9 @@ from bluesky.utils import plan, make_decorator, root_ancestor, Msg
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
 from bluesky.protocols import Readable, NamedMovable
+from bluesky import RunEngine
+from ophyd.sim import NullStatus, SynAxis, SynSignal
+from ophyd.status import StatusBase
 # from bluesky.callbacks import LiveTable, LivePlot, CallbackBase
 ###from pyOlog.SimpleOlogClient import SimpleOlogClient
 from esm import ss_csv
@@ -1236,8 +1242,8 @@ def M3_pitch_alignment(Branch="A",adaptive=False):
     #Determine the location of the maximum intensity.
 
     if uid is not None:
-        hdr=db[-1]
-        output=max_in_1D(hdr.start['scan_id'])
+        flush_tiled()
+        output=max_in_1D(uid)
         yield from mv( x_axis,initial_x_pos ) # this move helps with the backlash issue I have noticed
         yield from mv( x_axis,output[0] )
         #set the scan axis to the new value.
@@ -1446,6 +1452,7 @@ def FE_slits_alignment(detector_location="Diagon",mv_center=False,return_all=Fal
 
 
     if uid is not None:
+        flush_tiled()
         hdr=db[uid]
         output=max_in_2D(uid)
 
@@ -1737,8 +1744,8 @@ def Mirror_alignment(axes='M1_Ry_M3_Ry',Branch='A',mv_optimum=True,return_all=Tr
 
 
     if uid is not None:
-        hdr=db[uid]
-        output=max_in_2D(hdr.start.scan_id)
+        flush_tiled()
+        output=max_in_2D(uid)
         print (output)
 
         max_y=output[0]
@@ -2654,19 +2661,33 @@ def m3_adjust_centroid(
 
     return final["pos"], final["au"]
 
+"""Run ordinary scans while an endless snake trajectory jogs in the background.
 
-# --------------------------------------------------------------------------
-# Trajectory: ordinary Python, no bluesky involved.
-# --------------------------------------------------------------------------
+The trajectory is no longer embedded in the acquisition plan. It is a
+*Flyable device*: an object owning a background thread that walks the
+waypoint stream, plus the standard kickoff/complete/collect lifecycle so
+the RunEngine starts and stops it around every run.
+
+Consequences:
+
+  - The beamline's 2D / 3D / XAS plans run UNMODIFIED. Attaching the
+    trajectory is one line: ``sd.flyers.append(snake)``.
+  - The snake continues across runs: the waypoint generator is created
+    once and consumed lazily, so each run resumes where the last stopped.
+  - Motor positions reached during each run are emitted into a separate
+    "snake" event stream of that run -- uncorrelated by design, but
+    timestamped, so correlation is available after the fact for free.
+  - The snake motors MUST be disjoint from every device the scans touch.
+
+This is the fly-scan *interface* without hardware fly-scanning: no
+triggers, no external buffering hardware -- just a managed lifecycle for
+asynchronous motion.
+"""
 
 
 def _bouncing_odometer(nums):
-    """Yield index tuples over an N-D grid, endlessly.
-
-    Axis 0 advances every step; axis j+1 advances one step whenever axis j
-    bounces off an end. Edge indices dwell for one extra step at each
-    turnaround -- that is the physical bounce.
-    """
+    """Endless N-D grid walk: axis 0 advances every step; axis j+1 advances
+    one step whenever axis j bounces off an end."""
     idx = [0] * len(nums)
     dirs = [1] * len(nums)
     while True:
@@ -2679,92 +2700,187 @@ def _bouncing_odometer(nums):
             dirs[j] = -dirs[j]  # bounce; carry the advance to the next axis
 
 
-def snake_forever(fast, slows, *, snake_fast=True):
+def snake_forever(fast, slows):
     """Yield waypoints ``(fast, slow0, slow1, ...)`` of an endless snake.
 
-    fast : (lo, hi)
-        Swept fully on every segment.
-    slows : [(lo, hi, num), ...]
-        Stepped axes, ordered fastest-to-slowest; each bounces at its ends.
-    snake_fast : bool
-        True (default): fast axis alternates direction each row (snake).
-        False: fast axis always sweeps lo -> hi, rewinding between rows
-        (a plain raster, like ``grid_scan``'s ``snake_axes=False``).
+    fast : (lo, hi) -- swept fully on every segment, alternating direction.
+    slows : [(lo, hi, num), ...] -- stepped axes, fastest-to-slowest; each
+    bounces at its ends.
     """
     points = [np.linspace(lo, hi, num) for lo, hi, num in slows]
     lo, hi = fast
     fast_pos = lo
     for idx in _bouncing_odometer([num for _, _, num in slows]):
-        if not snake_fast:
-            fast_pos = lo  # rewind: every row starts at the same end
         slow_pos = tuple(p[i] for p, i in zip(points, idx))
         yield (fast_pos, *slow_pos)  # step slow axes at the turnaround
         fast_pos = hi if fast_pos == lo else lo
         yield (fast_pos, *slow_pos)  # sweep the fast axis
 
-# --------------------------------------------------------------------------
-# Execution: one generic plan, any number of motors, any waypoint stream.
-# --------------------------------------------------------------------------
 
+class TrajectoryFlyer:
+    """Jog ``motors`` along ``waypoints`` on a background thread.
 
-def jog_along(dets, motors, waypoints, *, period=0.1, md=None):
-    """Follow ``waypoints`` (any iterable of position tuples, one entry per
-    motor -- may be infinite), triggering/reading ``dets`` while in flight."""
-    _md = {
-        "plan_name": "jog_along",
-        "motors": [m.name for m in motors],
-        "detectors": [d.name for d in dets],
-        **(md or {}),
-    }
-
-    @bpp.stage_decorator([*dets, *motors])
-    @bpp.run_decorator(md=_md)
-    def inner():
-        last = (None,) * len(motors)
-        for point in waypoints:
-            yield from bps.checkpoint()  # pause/resume boundary per segment
-            grp = short_uid("jog")
-            statuses = []
-            for motor, target, prev in zip(motors, point, last):
-                if target != prev:  # only jog the motors that move
-                    st = yield from bps.abs_set(motor, target, group=grp, wait=False)
-                    statuses.append(st)
-            last = point
-            while not all(st.done for st in statuses):
-                yield from bps.trigger_and_read([*dets, *motors])
-                yield from bps.sleep(period)
-            yield from bps.wait(group=grp)  # re-raise any motion failure
-
-    return (yield from inner())
-
-def trigger_while_jogging(
-    detectors,
-    fast_motor,
-    fast_range,
-    *slow_args,
-    bound=None,
-    period=0.0,
-    snake_fast=True,
-    md=None,
-):
-    """Convenience wrapper: build a snake trajectory and run ``jog_along``.
-
-    trigger_while_jogging(det, x, [start_x, stop_x], y, [start_y, stop_y, num])
-
-    ``fast_motor``/``fast_range`` sweeps continuously, back and forth.
-    ``slow_args`` is expected to be of the form ``[lo, hi, num]``.
-    ``bound``, if given, caps the trajectory at that many waypoints;
-    otherwise it runs forever -- stop with Ctrl-C -> ``RE.stop()``.
+    kickoff(): start (or resume) walking the waypoint stream.
+    complete(): request a stop; finishes at the next waypoint boundary.
+    collect(): one event per waypoint reached, into stream ``name``.
+    stop(): abort -- halt the thread and stop the motors (RunEngine calls
+    this on abort/halt).
     """
-    if not isinstance(detectors, (list, tuple)):
-        detectors = [detectors]
 
-    slow_motors = list(slow_args[0::2])
-    slows = list(slow_args[1::2])
+    parent = None
 
-    trajectory = snake_forever(fast=tuple(fast_range), slows=slows, snake_fast=snake_fast)
-    if bound is not None:
-        trajectory = itertools.islice(trajectory, bound)
+    def __init__(self, name, motors, waypoints):
+        self.name = name
+        self._motors = list(motors)
+        self._waypoints = iter(waypoints)  # shared across runs: snake resumes
+        self._last = (None,) * len(self._motors)
+        self._stop_requested = threading.Event()
+        self._thread = None
+        self._done = None
+        self._buffer = []
+        self._motion_lock = threading.Lock()
 
-    motors = [fast_motor, *slow_motors]
-    return (yield from jog_along(detectors, motors, trajectory, period=period, md=md))
+    # -- Flyable interface --------------------------------------------------
+
+    def kickoff(self):
+        if self._thread is not None and self._thread.is_alive():
+            raise RuntimeError(f"{self.name} is already flying")
+        self._buffer = []
+        self._stop_requested.clear()
+        self._done = StatusBase()
+        self._thread = threading.Thread(
+            target=self._jog, daemon=True, name=f"{self.name}-jog"
+        )
+        self._thread.start()
+        return NullStatus()
+
+    def complete(self):
+        if self._done is None:
+            raise RuntimeError(f"complete() before kickoff() on {self.name}")
+        self._stop_requested.set()
+        return self._done  # finishes when the thread exits its segment
+
+    def describe_collect(self):
+        keys = {
+            m.name: {"source": f"flyer:{self.name}:{m.name}", "dtype": "number", "shape": []}
+            for m in self._motors
+        }
+        return {self.name: keys}
+
+    def collect(self):
+        buffer, self._buffer = self._buffer, []
+        yield from buffer
+
+    def stop(self, *, success=False):
+        self._stop_requested.set()
+
+        with self._motion_lock:
+            for m in self._motors:
+                m.stop(success=success)
+
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join()
+
+    def read_configuration(self):
+        return {}
+
+    def describe_configuration(self):
+        return {}
+
+    # -- background thread ---------------------------------------------------
+
+    def _jog(self):
+        try:
+            while True:
+                with self._motion_lock:
+                    if self._stop_requested.is_set():
+                        break
+                    point = next(self._waypoints)
+                    statuses = [
+                        m.set(target)
+                        for m, target, prev in zip(
+                            self._motors, point, self._last
+                        )
+                        if target != prev
+                    ]
+                    self._last = point
+
+                for st in statuses:
+                    st.wait()
+                now = time.time()
+                self._buffer.append(
+                    {
+                        "time": now,
+                        "data": {m.name: m.user_readback.get() for m in self._motors},
+                        "timestamps": {m.name: now for m in self._motors},
+                    }
+                )
+        except Exception as exc:
+            self._done.set_exception(exc)
+        else:
+            self._done.set_finished()
+
+# ---------------------------------------------------------------------------
+# Implementation of flying with speed adjustment to motors
+# ---------------------------------------------------------------------------
+
+def fly_during_speed(plan, trajectory, motor_speeds):
+    """
+    Fly during a plan while temporarily adjusting motor speeds.
+
+    Parameters
+    ----------
+    plan : generator
+        The plan to execute while flying. Example: RE.count(det)
+    trajectory : tuple
+        A tuple containing the motors and their respective ranges.
+        The first range corresponds to the fast axis, followed by slow axes.
+    motor_speeds : dict
+        A mapping of motors to their temporary speed settings.
+
+    Yields
+    ------
+    dict
+        The result of the plan execution.
+    """
+    motors, ranges = trajectory
+    fast, *slows = ranges
+    slows = [(lo, hi, int((hi - lo) / step)) for lo, hi, step in slows]
+    if len(motors) != len(ranges):
+        raise ValueError(
+            "trajectory must provide one range for each motor "
+            "(fast range first, then slow-axis ranges)"
+        )
+
+    flyer = TrajectoryFlyer(
+        "trajectory",
+        motors,
+        snake_forever(fast, slows),
+    )
+
+    # motor_speeds maps each motor to its temporary speed setting
+    original_speeds = {}
+    for motor in motor_speeds:
+        signal = motor.velocity
+        reading = yield from bps.read(signal)
+        original_speeds[motor] = reading[signal.name]["value"]
+
+    def run():
+        set_args = [
+            item
+            for motor, speed in motor_speeds.items()
+            for item in (motor.velocity, speed)
+        ]
+        yield from bps.mv(*set_args)
+        yield from bpp.fly_during_wrapper(plan, [flyer])
+
+    def restore():
+        restore_args = [
+            item
+            for motor, speed in original_speeds.items()
+            for item in (motor.velocity, speed)
+        ]
+        yield from bps.mv(*restore_args)
+
+    yield from bpp.finalize_wrapper(run(), restore())

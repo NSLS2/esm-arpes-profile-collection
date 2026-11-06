@@ -1,7 +1,7 @@
 RE,Name,LKE,HKE,Width,Ctr,Pass En,Lens,Acq,dE (mV) ,dt (s),Scn,tot-t,3D,Ai,Af,dA
-False,,60.0000,63.5000,3.5000,61.7500,PE020,L4Ang0d8,Swept,50,0.2000,4,1m 35s,False,,,
-False,,94.2100,95.7900,1.58,95,PE020,L4Ang0d8,Fixed,1.6170,5.0000,1,10m 20s,True,-15,15,.25
-False,,94.2100,95.7900,1.58,95.0000,PE020,L4MSpat5,Fixed,1.6170,0.5000,5,5m 0s,True,-2.6300,2.6300,0.0521
-False,,,,,,PE020,L4Ang0d8,Swept,5,0.1,1,,False,,,
+False,Fine Map,108.6091,110.1909,1.5817,109.4000,PE020,L4Ang0d8,Fixed,1.6170,25.0000,1,1h 40m 0s,True,-11,12,.1
+True,Quick Map,108.6100,110.1900,1.58,109.4000,PE020,L4Ang0d8,Fixed,1.6170,2.0000,1,6s,True,-11,12,.4
+False,Sweept Cut,108.6100,110.1900,1.58,109.4000,PE020,L4Ang0d8,Swept,5,2.0000,1,23m 44s,False,1.,,
+False,Fixed Cut,108.6100,110.1900,1.58,109.4000,PE020,L4Ang0d8,Fixed,5.0000,1000.0000,1,16m 40s,False,1,,
 False,,,,,,PE020,L4Ang0d8,Swept,5,0.1,1,,False,,,
 False,,,,,,PE020,L4Ang0d8,Swept,5,0.1,1,,False,,,
