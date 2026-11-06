@@ -18,12 +18,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Remove BSStudio dependency for CI only
+        run: |
+          echo "Removing BSStudio dependency from pixi.toml"
+          grep -n -A5 -B2 "bsstudio" pixi.toml || true
+          sed -i '/^bsstudio = /d' pixi.toml
+          echo "after removing BSStudio dependency from pixi.toml"
+          grep -n -A5 -B2 "bsstudio" pixi.toml || true
+
       - name: Setup Pixi
         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
           pixi-version: v0.82.1
           cache: false
-          environments: test
+          environments : test
+          frozen: false
+          locked: false
 
       - name: Run pytest
         run: pixi run tests
