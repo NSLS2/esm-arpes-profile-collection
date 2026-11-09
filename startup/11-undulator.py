@@ -12,7 +12,9 @@ class SlowStopPVPositioner(PVPositionerNoPutCallback):
     """PVPositioner that pauses 0.1 s after each stop request.
 
     Gap and phase share ``Cmd:Stop-Cmd``; the pause keeps their stops from reaching
-    the CA gateway in quick succession (JIRA SXSS-353).
+    the CA gateway in quick succession (JIRA SXSS-353). ``Cmd:Start-Cmd`` brackets
+    a complete EPU request; ``Sts:Moving-Sts`` stays idle and motor ``DMOV`` can
+    finish an intermediate cycle before the request is complete.
     """
     def stop(self, *, success=False):
         super().stop(success=success)
@@ -27,7 +29,7 @@ class UgapPositioner(SlowStopPVPositioner):
     stop_signal = Cpt(EpicsSignal, '}Cmd:Stop-Cmd')
     stop_value = 1
 
-    done = Cpt(EpicsSignalRO, '}Sts:Moving-Sts')
+    done = Cpt(EpicsSignalRO, '}Cmd:Start-Cmd')
     done_value = 0
 
     kill_switch_pressed = Cpt(EpicsSignalRO, '}Sts:Kill-Sts')
@@ -82,7 +84,7 @@ class UphasePositioner(SlowStopPVPositioner):
     stop_signal = Cpt(EpicsSignal, '}Cmd:Stop-Cmd')
     stop_value = 1
 
-    done = Cpt(EpicsSignalRO, '}Sts:Moving-Sts')
+    done = Cpt(EpicsSignalRO, '}Cmd:Start-Cmd')
     done_value = 0
 
     kill_switch_pressed = Cpt(EpicsSignalRO, '}Sts:Kill-Sts')

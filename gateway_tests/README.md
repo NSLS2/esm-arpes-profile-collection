@@ -10,7 +10,7 @@ This hits `FEslit` gap/center (`FE:C21A…`) and `EPU57`/`EPU105` gap/phase (`SR
 ## Changes on this branch (`startup/10-machine.py`, `startup/11-undulator.py`)
 - `PVPositionerNoPutCallback`: setpoint and actuate are plain puts. The move finishes when `done` reaches `done_value`.
 - FE slit: done = `DMOV` (unchanged).
-- EPU: done changed from `Cmd:Start-Cmd == 0` to `Sts:Moving-Sts == 0`, as SIX uses for the same type of EPU PVs. `Start-Cmd` is a `bo` with `HIGH=0` that has read "Start" for days with the EPU idle, so it doesn't look like a done flag. Still kept as the actuate.
+- EPU: actuate and done both use `Cmd:Start-Cmd`; done is numeric `0`, as on `main`. The comparison trace below rules out `Sts:Moving-Sts` and motor `DMOV` as whole-request completion signals.
 - EPU stop is a plain put. It previously raised `AttributeError`.
 
 ## Run order: what each step tells us
@@ -22,11 +22,11 @@ This hits `FEslit` gap/center (`FE:C21A…`) and `EPU57`/`EPU105` gap/phase (`SR
 | `4a_epu_readonly.sh 57\|105` | no | `Start-Cmd` 0/1 and labels, `SPMG`, `Moving-Sts` 0 = No, `DMOV` not `DISABLE` |
 | `4b_watch_epu.sh` + `4b_epu_move.py` (in bsui) | EPU +0.1 and back | see below |
 
-`4b` with the **deployed** profile:
-- `set()` takes about the move time: writing the setpoint alone moves the EPU, so `actuate` can go.
-- `set()` returns at once: `Start-Cmd` starts the move, so keep `actuate`.
-- `Moving-Sts` 1 during motion and 0 once `RBV` settles: the done change on this branch is right.
-- `Start-Cmd` never returns to 0, or does so before `RBV` settles: the old done signal was wrong.
-- Zero-length move: if `Moving-Sts` doesn't toggle, a move to the current gap will never finish on this branch.
+## EPU105 result
 
-`4b` with **this branch**: `set()` returns at once, and `st` should become done when `Moving-Sts` returns to 0.
+The comparison trace shows:
+- `Sts:Moving-Sts` stayed at `0` through both real and zero-length requests. A `PVPositioner` using it never observes the required not-done → done transition, so its `MoveStatus` hangs.
+- `Cmd:Start-Cmd` transitioned `0` → `1` → `0` for every request with both versions. It returned to `0` only after the final `DMOV == 1`, including zero-length requests.
+- `DMOV` can complete one cycle before `Start-Cmd` is asserted and another after it is asserted, so it does not bracket the full EPU request.
+
+Therefore EPU completion remains `Cmd:Start-Cmd == 0`; this branch only removes CA put callbacks from setpoint, actuate, and stop writes.
