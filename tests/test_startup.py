@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from contextlib import ExitStack
 from unittest.mock import patch, MagicMock
 import pytest
 import matplotlib
@@ -148,3 +149,36 @@ def test_move_to_skips_retraction_when_other_epu_is_out(startup_shell):
         first_message = next(plan)
 
     assert first_message.obj is not selected_epu.gap.other
+
+
+@pytest.mark.parametrize(
+    "device_name, attr",
+    [
+        ("FEslit", "h_gap"),
+        ("FEslit", "h_center"),
+        ("EPU57", "gap"),
+        ("EPU105", "phase"),
+    ],
+)
+def test_gateway_positioners_move_and_stop_without_put_callbacks(
+    startup_shell, device_name, attr
+):
+    positioner = getattr(startup_shell.user_ns[device_name], attr)
+    signals = [
+        sig
+        for sig in (positioner.setpoint, positioner.actuate, positioner.stop_signal)
+        if sig is not None
+    ]
+
+    with ExitStack() as stack:
+        puts = [stack.enter_context(patch.object(sig, "put")) for sig in signals]
+        positioner.set(1.0)
+        positioner.stop()
+
+    assert puts[0].call_args.args == (1.0,)
+    calls = [call for put in puts for call in put.call_args_list]
+    assert len(calls) == len(signals)
+    for call in calls:
+        assert not call.kwargs.get("wait", False)
+        assert not call.kwargs.get("use_complete", False)
+        assert call.kwargs.get("callback") is None
