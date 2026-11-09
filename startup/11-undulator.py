@@ -1,5 +1,4 @@
-from ophyd import (PVPositioner, Component as Cpt, EpicsSignal, EpicsSignalRO,
-                   Device)
+from ophyd import Component as Cpt, EpicsSignal, EpicsSignalRO, Device
 from ophyd.utils import ReadOnlyError
 import time as ttime
 
@@ -9,15 +8,17 @@ def safe_to_actuate_epu57():
 def safe_to_actuate_epu105():
     return EPU57.gap.position>219
 
-class SlowStopPVPositioner(PVPositioner):
-    """This keeps the Gap and Phase from sending stop over the CAGateway in fast succession.
-    maffettone added this in response to JIRA SXSS-353
+class SlowStopPVPositioner(PVPositionerNoPutCallback):
+    """PVPositioner that pauses 0.1 s after each stop request.
+
+    Gap and phase share ``Cmd:Stop-Cmd``; the pause keeps their stops from reaching
+    the CA gateway in quick succession (JIRA SXSS-353). ``Cmd:Start-Cmd`` brackets
+    a complete EPU request; ``Sts:Moving-Sts`` stays idle and motor ``DMOV`` can
+    finish an intermediate cycle before the request is complete.
     """
     def stop(self, *, success=False):
-        if self.stop_signal is not None:
-            self.stop_signal.put(self.stop_value, wait=True)
-            ttime.sleep(0.1)
-        super(PVPositioner).stop(success=success)
+        super().stop(success=success)
+        ttime.sleep(0.1)
 
 class UgapPositioner(SlowStopPVPositioner):
     readback = Cpt(EpicsSignalRO, '-Ax:Gap}Mtr.RBV')
@@ -28,7 +29,7 @@ class UgapPositioner(SlowStopPVPositioner):
     stop_signal = Cpt(EpicsSignal, '}Cmd:Stop-Cmd')
     stop_value = 1
 
-    done = Cpt(EpicsSignal, '}Cmd:Start-Cmd')
+    done = Cpt(EpicsSignalRO, '}Cmd:Start-Cmd')
     done_value = 0
 
     kill_switch_pressed = Cpt(EpicsSignalRO, '}Sts:Kill-Sts')
@@ -83,7 +84,7 @@ class UphasePositioner(SlowStopPVPositioner):
     stop_signal = Cpt(EpicsSignal, '}Cmd:Stop-Cmd')
     stop_value = 1
 
-    done = Cpt(EpicsSignal, '}Cmd:Start-Cmd')
+    done = Cpt(EpicsSignalRO, '}Cmd:Start-Cmd')
     done_value = 0
 
     kill_switch_pressed = Cpt(EpicsSignalRO, '}Sts:Kill-Sts')

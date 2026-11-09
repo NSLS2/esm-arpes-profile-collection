@@ -308,14 +308,32 @@ M4BDdiag2 = DIAG("XF:21IDC-OP{Mir:4B-Diag:B5_D_2-Ax:2",name = 'M4BDdiag2')
 # --------------------------FRONT END COMPONENTS -----------------------------
 # Slits
 
-class Virtual_Size(PVPositioner):
+class PVPositionerNoPutCallback(PVPositioner):
+    """PVPositioner that writes ``setpoint`` and ``actuate`` without CA put callbacks.
+
+    Motion completion comes only from ``done``. Use for PVs reached through the
+    accelerator CA gateway, which can crash if the requesting client disconnects
+    while a put callback is outstanding, and which holds back every client's reads
+    of the PV until the callback completes. ``setpoint`` is sent before ``actuate``
+    on the same CA circuit, so both must be served by the same IOC.
+    """
+
+    def _setup_move(self, position):
+        self.log.debug("%s.setpoint = %s", self.name, position)
+        self.setpoint.put(position, wait=False)
+        if self.actuate is not None:
+            self.log.debug("%s.actuate = %s", self.name, self.actuate_value)
+            self.actuate.put(self.actuate_value, wait=False)
+
+
+class Virtual_Size(PVPositionerNoPutCallback):
 #This is used to connect to the front end gap size PV's.
     readback = Comp(EpicsSignalRO, 't2.C')
     setpoint = Comp(EpicsSignal,'size')
     done = Comp(EpicsSignalRO,'DMOV')
     done_value = 1
 
-class Virtual_Center(PVPositioner):
+class Virtual_Center(PVPositionerNoPutCallback):
 #This is used to connect to the front end gap centre PV's.
     readback = Comp(EpicsSignalRO, 't2.D')
     setpoint = Comp(EpicsSignal,'center')
