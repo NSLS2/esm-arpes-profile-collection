@@ -18,7 +18,7 @@ def esm_gui1(filename=esm_ui_config_file, detached=False, verbose=False):
     import bsstudio
     import warnings
     #warnings.simplefilter("ignore")
-    bsstudio.load(filename, noexec=detached, verbose=verbose)
+    g = bsstudio.load(filename, noexec=detached, verbose=verbose)
 
 def esm_gui(filename=esm_ui_config_file, detached=False, verbose=False):
     #import cProfile
