@@ -1,9 +1,15 @@
+import asyncio
 import os
 import sys
+import threading
 from pathlib import Path
 from contextlib import ExitStack
 from unittest.mock import patch, MagicMock
 import pytest
+import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
+from bluesky import RunEngine
+from bluesky.utils import RunEngineInterrupted
 import matplotlib
 
 # This is needed to prevent matplotlib from trying to use the X server
@@ -182,3 +188,147 @@ def test_gateway_positioners_move_and_stop_without_put_callbacks(
         assert not call.kwargs.get("wait", False)
         assert not call.kwargs.get("use_complete", False)
         assert call.kwargs.get("callback") is None
+
+
+class _SweepMotor:
+    """Manipulator axis stand-in.
+
+    A move to the current position finishes at once. Any other move is a
+    sweep that stays in flight until stop(), or arrives on its own after
+    ``SWEEP_TIME`` so a flyer that never stops it fails a test instead of
+    hanging it.
+    """
+
+    SWEEP_TIME = 5
+
+    def __init__(self, name):
+        from ophyd import Signal
+
+        self.name = name
+        self.velocity = Signal(name=f"{name}_velocity", value=1.0)
+        self.user_readback = Signal(name=f"{name}_user_readback", value=0.0)
+        self.commands = []
+        self.arrivals = []  # targets of sweeps that ran to completion
+        self.sweeps = threading.Semaphore(0)  # released when a sweep starts
+        self.in_flight = None
+        self._lock = threading.Lock()
+        self._timer = None
+
+    def set(self, target):
+        from ophyd.status import StatusBase
+
+        self.commands.append(target)
+        status = StatusBase()
+        if target == self.user_readback.get():
+            status.set_finished()
+            return status
+        with self._lock:
+            self.in_flight = status
+            self._timer = threading.Timer(self.SWEEP_TIME, self._arrive, (target, status))
+            self._timer.daemon = True
+            self._timer.start()
+        self.sweeps.release()
+        return status
+
+    def _arrive(self, target, status):
+        with self._lock:
+            if self.in_flight is not status:
+                return
+            self.in_flight = None
+            self.arrivals.append(target)
+        status.set_finished()
+
+    def stop(self, *, success=False):
+        with self._lock:
+            status, self.in_flight = self.in_flight, None
+            if self._timer is not None:
+                self._timer.cancel()
+        if status is not None:
+            status.set_finished()
+
+
+def _wait_for_sweep(motor):
+    def started():
+        return asyncio.to_thread(motor.sweeps.acquire, timeout=5)
+
+    (task,) = yield from bps.wait_for([started])
+    assert task.result(), f"{motor.name} never started a sweep"
+
+
+def _fly_scan(namespace, x, y, inner):
+    trajectory = ([x, y], [(0.0, 10.0), (0.0, 1.0, 0.5)])
+    return namespace["fly_during_speed"](inner, trajectory, {x: 2.0})
+
+
+@bpp.run_decorator()
+def _pause_mid_sweep(x):
+    yield from _wait_for_sweep(x)
+    yield from bps.checkpoint()
+    yield from bps.pause()
+    yield from _wait_for_sweep(x)
+
+
+def _pause_mid_sweep_fly_scan(namespace, x, y):
+    return _fly_scan(namespace, x, y, _pause_mid_sweep(x))
+
+
+def test_fly_scan_abort_stops_manipulator_mid_sweep(startup_shell):
+    x, y = _SweepMotor("x"), _SweepMotor("y")
+    RE = RunEngine({})
+    stops = []
+    RE.subscribe(lambda name, doc: stops.append(doc) if name == "stop" else None)
+
+    with pytest.raises(RunEngineInterrupted):
+        RE(_pause_mid_sweep_fly_scan(startup_shell.user_ns, x, y))
+    assert x.in_flight is None
+    commands_at_pause = list(x.commands)
+
+    RE.abort()
+
+    assert x.in_flight is None
+    assert x.arrivals == []
+    assert x.commands == commands_at_pause
+    assert stops[0]["exit_status"] == "abort"
+
+
+def test_fly_scan_resumes_interrupted_sweep_and_stops_at_run_end(startup_shell):
+    x, y = _SweepMotor("x"), _SweepMotor("y")
+    RE = RunEngine({})
+    stops = []
+    RE.subscribe(lambda name, doc: stops.append(doc) if name == "stop" else None)
+
+    with pytest.raises(RunEngineInterrupted):
+        RE(_pause_mid_sweep_fly_scan(startup_shell.user_ns, x, y))
+    assert x.in_flight is None
+
+    RE.resume()
+
+    assert x.commands.count(10.0) == 2  # the interrupted sweep is re-commanded
+    assert 1.0 not in y.commands
+    assert x.in_flight is None
+    assert x.arrivals == []  # stopped at run end, not left to finish the sweep
+    assert stops[0]["exit_status"] == "success"
+
+
+def test_fly_scan_halt_stops_manipulator_mid_sweep(startup_shell):
+    x, y = _SweepMotor("x"), _SweepMotor("y")
+    RE = RunEngine({})
+    swept = []
+
+    def halt_mid_sweep():
+        swept.append(x.sweeps.acquire(timeout=5))
+        RE.halt()
+
+    @bpp.run_decorator()
+    def inner():
+        yield from bps.sleep(30)  # interrupted by the halt
+
+    halter = threading.Thread(target=halt_mid_sweep)
+    halter.start()
+    with pytest.raises(RunEngineInterrupted):
+        RE(_fly_scan(startup_shell.user_ns, x, y, inner()))
+    halter.join()
+
+    assert swept == [True]
+    assert x.in_flight is None
+    assert x.arrivals == []

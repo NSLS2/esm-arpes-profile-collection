@@ -2721,10 +2721,20 @@ class TrajectoryFlyer:
     """Jog ``motors`` along ``waypoints`` on a background thread.
 
     kickoff(): start (or resume) walking the waypoint stream.
-    complete(): request a stop; finishes at the next waypoint boundary.
-    collect(): one event per waypoint reached, into stream ``name``.
-    stop(): abort -- halt the thread and stop the motors (RunEngine calls
-    this on abort/halt).
+    complete(): stop the motors now; finishes once the walk has ended.
+    pause() / resume(): stop the motors when the RunEngine pauses or
+    suspends; continue the walk when it resumes.
+    collect(): one event per waypoint reached or halt, into stream ``name``.
+    stop(): stop the motors now and end the walk.
+
+    The RunEngine only stops devices it moved with ``set``, never a flyer's
+    motors, so this class halts them itself. ``fly_during_wrapper`` calls
+    complete() before every ``close_run``, including on abort, stop, or
+    plan failure. ``RE.halt()`` skips that ``close_run``; the plan running
+    the flyer must call stop() itself (``fly_during_speed`` does). A
+    waypoint cut short by a stop or pause is commanded again when the walk
+    continues, so the trajectory has no gaps. No method blocks on the
+    motors, which keeps the RunEngine event loop responsive.
     """
 
     parent = None
@@ -2733,8 +2743,11 @@ class TrajectoryFlyer:
         self.name = name
         self._motors = list(motors)
         self._waypoints = iter(waypoints)  # shared across runs: snake resumes
+        self._pending = None  # waypoint commanded but not yet reached
         self._last = (None,) * len(self._motors)
+        self._halts = 0  # bumped by every halt; marks moves cut short
         self._stop_requested = threading.Event()
+        self._unpaused = threading.Event()
         self._thread = None
         self._done = None
         self._buffer = []
@@ -2747,6 +2760,7 @@ class TrajectoryFlyer:
             raise RuntimeError(f"{self.name} is already flying")
         self._buffer = []
         self._stop_requested.clear()
+        self._unpaused.set()
         self._done = StatusBase()
         self._thread = threading.Thread(
             target=self._jog, daemon=True, name=f"{self.name}-jog"
@@ -2757,8 +2771,8 @@ class TrajectoryFlyer:
     def complete(self):
         if self._done is None:
             raise RuntimeError(f"complete() before kickoff() on {self.name}")
-        self._stop_requested.set()
-        return self._done  # finishes when the thread exits its segment
+        self._end_walk()
+        return self._done  # finishes once the motors report done
 
     def describe_collect(self):
         keys = {
@@ -2772,15 +2786,14 @@ class TrajectoryFlyer:
         yield from buffer
 
     def stop(self, *, success=False):
-        self._stop_requested.set()
+        self._end_walk(success=success)
 
-        with self._motion_lock:
-            for m in self._motors:
-                m.stop(success=success)
+    def pause(self):
+        self._unpaused.clear()
+        self._halt()
 
-        thread = self._thread
-        if thread is not None and thread is not threading.current_thread():
-            thread.join()
+    def resume(self):
+        self._unpaused.set()
 
     def read_configuration(self):
         return {}
@@ -2790,21 +2803,39 @@ class TrajectoryFlyer:
 
     # -- background thread ---------------------------------------------------
 
+    def _end_walk(self, success=True):
+        self._stop_requested.set()
+        self._unpaused.set()  # a paused walk must wake up to exit
+        self._halt(success=success)
+
+    def _halt(self, success=True):
+        """Stop the motors without waiting for them to come to rest."""
+        with self._motion_lock:
+            self._halts += 1
+            for m in self._motors:
+                m.stop(success=success)
+
     def _jog(self):
         try:
             while True:
+                self._unpaused.wait()
                 with self._motion_lock:
                     if self._stop_requested.is_set():
                         break
-                    point = next(self._waypoints)
+                    if not self._unpaused.is_set():
+                        continue  # paused while waiting for the lock
+                    if self._pending is None:
+                        self._pending = next(self._waypoints)
                     statuses = [
                         m.set(target)
                         for m, target, prev in zip(
-                            self._motors, point, self._last
+                            self._motors, self._pending, self._last
                         )
                         if target != prev
                     ]
-                    self._last = point
+                    # Positions are unknown until the move ends unhalted.
+                    self._last = (None,) * len(self._motors)
+                    halts = self._halts
 
                 for st in statuses:
                     st.wait()
@@ -2816,6 +2847,8 @@ class TrajectoryFlyer:
                         "timestamps": {m.name: now for m in self._motors},
                     }
                 )
+                if self._halts == halts:
+                    self._last, self._pending = self._pending, None
         except Exception as exc:
             self._done.set_exception(exc)
         else:
@@ -2828,6 +2861,9 @@ class TrajectoryFlyer:
 def fly_during_speed(plan, trajectory, motor_speeds):
     """
     Fly during a plan while temporarily adjusting motor speeds.
+
+    The motors stop as soon as ``plan`` finishes, fails, is aborted, or is
+    halted, and stay stopped while the RunEngine is paused or suspended.
 
     Parameters
     ----------
@@ -2873,7 +2909,14 @@ def fly_during_speed(plan, trajectory, motor_speeds):
             for item in (motor.velocity, speed)
         ]
         yield from bps.mv(*set_args)
-        yield from bpp.fly_during_wrapper(plan, [flyer])
+        try:
+            yield from bpp.fly_during_wrapper(plan, [flyer])
+        except GeneratorExit:
+            # RE.halt() closes the plan without the close_run that triggers
+            # complete(), and the RunEngine never stops a flyer itself.
+            # Nothing may be yielded here, so stop the motors directly.
+            flyer.stop()
+            raise
 
     def restore():
         restore_args = [
